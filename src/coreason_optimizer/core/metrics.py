@@ -38,14 +38,19 @@ def normalize_answer(s: str) -> str:
 class ExactMatch(Metric):
     """Computes whether the prediction exactly matches the reference (after normalization)."""
 
-    def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+    def _score_single(self, prediction: str, reference: Any) -> float:
         return 1.0 if normalize_answer(prediction) == normalize_answer(str(reference)) else 0.0
+
+    def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+        if isinstance(reference, list):
+            return max((self._score_single(prediction, ref) for ref in reference), default=0.0)
+        return self._score_single(prediction, reference)
 
 
 class F1Score(Metric):
     """Computes F1 score based on token overlap."""
 
-    def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+    def _score_single(self, prediction: str, reference: Any) -> float:
         prediction_tokens = normalize_answer(prediction).split()
         reference_tokens = normalize_answer(str(reference)).split()
 
@@ -63,6 +68,11 @@ class F1Score(Metric):
         f1 = (2 * precision * recall) / (precision + recall)
 
         return f1
+
+    def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+        if isinstance(reference, list):
+            return max((self._score_single(prediction, ref) for ref in reference), default=0.0)
+        return self._score_single(prediction, reference)
 
 
 class MetricFactory:

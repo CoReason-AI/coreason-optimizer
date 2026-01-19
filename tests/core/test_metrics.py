@@ -17,6 +17,11 @@ def test_normalize_answer() -> None:
     assert normalize_answer("The quick Brown Fox!") == "quick brown fox"
     assert normalize_answer("  spaces  ") == "spaces"
     assert normalize_answer("a an the") == ""
+    # Unicode and Special Chars
+    assert normalize_answer("café") == "café"
+    assert normalize_answer("ñandú") == "ñandú"
+    assert normalize_answer("Hello\u00a0World") == "hello world"  # Non-breaking space
+    assert normalize_answer("😊") == "😊"  # Emojis remain (not punctuation)
 
 
 def test_exact_match() -> None:
@@ -25,6 +30,16 @@ def test_exact_match() -> None:
     assert em("Hello World", "Hello World!") == 1.0  # Punctuation ignored
     assert em("foo", "bar") == 0.0
     assert em("123", 123) == 1.0
+
+
+def test_exact_match_multiple_references() -> None:
+    em = ExactMatch()
+    # Matches one of the references
+    assert em("foo", ["bar", "foo", "baz"]) == 1.0
+    # Matches none
+    assert em("qux", ["bar", "foo"]) == 0.0
+    # Empty list
+    assert em("foo", []) == 0.0
 
 
 def test_f1_score() -> None:
@@ -44,9 +59,47 @@ def test_f1_score() -> None:
     assert f1("", "foo") == 0.0
 
 
+def test_f1_score_multiple_references() -> None:
+    f1 = F1Score()
+    # Should take the max score
+    # "cat" vs "cat" -> 1.0
+    # "cat" vs "dog" -> 0.0
+    assert f1("cat", ["dog", "cat"]) == 1.0
+
+    # Partial matches
+    # "cat sat" vs "cat sat mat" -> 0.8
+    # "cat sat" vs "cat sat" -> 1.0
+    # Should pick 1.0
+    assert f1("cat sat", ["cat sat mat", "cat sat"]) == 1.0
+
+    # Empty list
+    assert f1("cat", []) == 0.0
+
+
 def test_metric_factory() -> None:
     assert isinstance(MetricFactory.get("exact_match"), ExactMatch)
     assert isinstance(MetricFactory.get("f1_score"), F1Score)
 
     with pytest.raises(ValueError):
         MetricFactory.get("unknown")
+
+
+def test_non_string_types() -> None:
+    em = ExactMatch()
+    f1 = F1Score()
+
+    # Integers
+    assert em("123", 123) == 1.0
+    assert f1("123", 123) == 1.0
+
+    # Floats
+    assert em("123.45", 123.45) == 1.0
+
+    # None (prediction is typed as str, but if it comes in as None?)
+    # normalize_answer expects str. In Python runtime, this would raise AttributeError.
+    # We follow the type hint `prediction: str`.
+    # However, reference can be Any.
+
+    # Reference as None -> str(None) -> "None"
+    assert em("None", None) == 1.0
+    assert em("foo", None) == 0.0
