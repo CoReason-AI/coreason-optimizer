@@ -10,6 +10,7 @@ packages = [{include = "coreason_optimizer", from = "src"}]
 [tool.poetry.dependencies]
 python = ">=3.12, <3.15"
 loguru = "^0.7.2"
+pydantic = "^2.12.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
@@ -56,6 +57,9 @@ ignore = []
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+# This is needed because sometimes mypy doesn't see Pydantic types correctly in this environment,
+# treating BaseModel as Any.
+disallow_subclassing_any = false
 
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=100"
