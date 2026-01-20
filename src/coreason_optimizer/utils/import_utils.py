@@ -74,8 +74,7 @@ def load_agent_from_path(agent_path_str: str) -> Construct:
         missing = [attr for attr in required_attrs if not hasattr(agent_obj, attr)]
         if missing:
             raise TypeError(
-                f"Agent object '{variable_name}' does not satisfy Construct protocol. "
-                f"Missing attributes: {missing}"
+                f"Agent object '{variable_name}' does not satisfy Construct protocol. Missing attributes: {missing}"
             )
 
     return cast(Construct, agent_obj)
