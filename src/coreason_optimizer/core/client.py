@@ -117,6 +117,9 @@ class BudgetAwareLLMClient:
         **kwargs: Any,
     ) -> LLMResponse:
         """Generate response and consume budget."""
+        # 0. Check Budget Pre-flight
+        self.budget_manager.check_budget()
+
         # 1. Generate
         response = self.client.generate(
             messages=messages,

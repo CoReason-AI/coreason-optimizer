@@ -1,8 +1,0 @@
-{
-  "agent_id": "test",
-  "base_model": "gpt-4o",
-  "optimized_instruction": "sys",
-  "few_shot_examples": [],
-  "performance_metric": 0.0,
-  "optimization_run_id": "run"
-}

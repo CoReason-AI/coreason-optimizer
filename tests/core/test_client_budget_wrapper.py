@@ -75,3 +75,43 @@ def test_wrapper_passes_args() -> None:
     wrapper.generate(messages=[{"a": "b"}], model="gpt-test", temperature=0.7, extra="val")
 
     mock_inner.generate.assert_called_once_with(messages=[{"a": "b"}], model="gpt-test", temperature=0.7, extra="val")
+
+
+def test_wrapper_blocks_call_if_already_exceeded() -> None:
+    """Test that generate is blocked if budget is already exceeded."""
+    mock_inner = MagicMock()
+    budget = BudgetManager(5.0)
+    wrapper = BudgetAwareLLMClient(mock_inner, budget)
+
+    # Manually consume budget to exceed it
+    try:
+        budget.consume(UsageStats(cost_usd=6.0))
+    except BudgetExceededError:
+        pass  # Expected
+
+    # Try generate
+    with pytest.raises(BudgetExceededError):
+        wrapper.generate([])
+
+    # Ensure inner client was NOT called
+    mock_inner.generate.assert_not_called()
+
+
+def test_boundary_conditions() -> None:
+    """Test exact budget match."""
+    inner = MockLLMClient(response_cost=5.0)
+    budget = BudgetManager(10.0)
+    wrapper = BudgetAwareLLMClient(inner, budget)
+
+    # 1. Spend exactly 5.0. Total 5.0 <= 10.0. OK.
+    wrapper.generate([])
+    assert budget.total_cost_usd == 5.0
+
+    # 2. Spend another 5.0. Total 10.0 <= 10.0. OK. (Boundary)
+    wrapper.generate([])
+    assert budget.total_cost_usd == 10.0
+
+    # 3. Spend 0.1 more. Total 10.1 > 10.0. Fail.
+    inner.response_cost = 0.1
+    with pytest.raises(BudgetExceededError):
+        wrapper.generate([])
