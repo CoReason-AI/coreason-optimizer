@@ -9,6 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import pytest
+
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.selector import RandomSelector

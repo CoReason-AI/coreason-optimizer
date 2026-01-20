@@ -9,8 +9,9 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import pytest
-from coreason_optimizer.core.config import OptimizerConfig
 from pydantic import ValidationError
+
+from coreason_optimizer.core.config import OptimizerConfig
 
 
 def test_default_config() -> None:
