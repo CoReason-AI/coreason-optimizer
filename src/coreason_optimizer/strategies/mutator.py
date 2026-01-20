@@ -8,12 +8,39 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+import json
 from abc import ABC, abstractmethod
+
+from jinja2 import Template
 
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import LLMClient
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.utils.logger import logger
+
+META_PROMPT_TEMPLATE = (
+    "You are an expert prompt engineer. Your goal is to rewrite the system instruction "
+    "for an AI agent to fix specific failure cases while maintaining general performance.\n\n"
+    "### Current Instruction\n"
+    "{{ instruction }}\n\n"
+    "### Failure Analysis\n"
+    "The following examples failed with the current instruction:\n"
+    "{% for ex in failures %}\n"
+    "Example {{ loop.index }}:\n"
+    "Input:\n"
+    "{{ ex.inputs }}\n\n"
+    "Expected Output:\n"
+    "{{ ex.reference }}\n\n"
+    "Actual Output:\n"
+    "{{ ex.prediction }}\n"
+    "{% endfor %}\n"
+    "{% if failures_hidden_count > 0 %}\n"
+    "... (and {{ failures_hidden_count }} more failures)\n"
+    "{% endif %}\n\n"
+    "### Task\n"
+    "Analyze the examples and the current instruction. Propose a NEW system instruction that would correctly handle "
+    "these examples. Return ONLY the new instruction text, without explanation or markdown formatting."
+)
 
 
 class BaseMutator(ABC):
@@ -91,34 +118,25 @@ class LLMInstructionMutator(BaseMutator):
             return current_instruction
 
     def _build_meta_prompt(self, instruction: str, failures: list[TrainingExample]) -> str:
-        """Construct the meta-prompt for the LLM."""
-        prompt = (
-            "You are an expert prompt engineer. Your goal is to rewrite the system instruction "
-            "for an AI agent to fix specific failure cases while maintaining general performance.\n\n"
-            "### Current Instruction\n"
-            f"{instruction}\n\n"
-            "### Failure Analysis\n"
-            "The following examples failed with the current instruction:\n"
-        )
-
-        # Limit to top 10 examples to prevent context overflow
+        """Construct the meta-prompt for the LLM using Jinja2."""
         display_failures = failures[:10]
+        failures_hidden_count = len(failures) - len(display_failures)
 
-        for i, ex in enumerate(display_failures, 1):
-            inputs_str = ", ".join(f"{k}: {v}" for k, v in ex.inputs.items())
-            prediction = ex.metadata.get("prediction", "N/A")
-
-            prompt += (
-                f"\nExample {i}:\nInput: {inputs_str}\nExpected Output: {ex.reference}\nActual Output: {prediction}\n"
+        formatted_failures = []
+        for ex in display_failures:
+            formatted_failures.append(
+                {
+                    "inputs": json.dumps(ex.inputs, indent=2),
+                    "reference": str(ex.reference),
+                    "prediction": str(ex.metadata.get("prediction", "N/A")),
+                }
             )
 
-        if len(failures) > 10:
-            prompt += f"\n... (and {len(failures) - 10} more failures)\n"
-
-        prompt += (
-            "\n\n### Task\n"
-            "Analyze the examples and the current instruction. "
-            "Propose a NEW system instruction that would correctly handle these examples. "
-            "Return ONLY the new instruction text, without explanation or markdown formatting."
+        template = Template(META_PROMPT_TEMPLATE)
+        return str(
+            template.render(
+                instruction=instruction,
+                failures=formatted_failures,
+                failures_hidden_count=failures_hidden_count,
+            )
         )
-        return prompt

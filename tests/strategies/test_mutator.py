@@ -182,6 +182,7 @@ def test_llm_instruction_mutator_complex_inputs() -> None:
     prompt = kwargs["messages"][0]["content"]
 
     # Verify string representation shows up
-    assert "user_profile" in prompt
-    assert "tags" in prompt
-    assert "history" in prompt
+    assert '"user_profile":' in prompt
+    assert '"tags":' in prompt
+    assert '"history":' in prompt
+    assert '"age": 30' in prompt
