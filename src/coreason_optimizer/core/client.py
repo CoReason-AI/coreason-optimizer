@@ -63,6 +63,9 @@ class OpenAIClient:
     ) -> LLMResponse:
         model = model or "gpt-4o"
 
+        if kwargs.get("stream"):
+            raise ValueError("Streaming is not supported by OpenAIClient.")
+
         try:
             # OpenAI expects specific types for messages, but dicts usually work.
             response = self.client.chat.completions.create(
