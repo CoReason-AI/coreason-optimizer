@@ -22,16 +22,30 @@ def load_agent_from_path(agent_path_str: str) -> Construct:
     Format: "path/to/file.py" (defaults to variable 'agent')
             "path/to/file.py:variable_name"
     """
-    if ":" in agent_path_str:
-        file_path_str, variable_name = agent_path_str.split(":", 1)
+    file_path: Path | None = None
+    variable_name = "agent"
+
+    # 1. Try treating the whole string as a path
+    p = Path(agent_path_str)
+    if p.exists() and p.is_file():
+        file_path = p
     else:
-        file_path_str = agent_path_str
-        variable_name = "agent"
+        # 2. Try splitting at the last colon (for path:variable)
+        # Note: We use rsplit to handle Windows drive letters (C:\...) correctly
+        # because a drive letter colon is near the start, and separator is near the end.
+        if ":" in agent_path_str:
+            parts = agent_path_str.rsplit(":", 1)
+            # If split results in 2 parts, check if the first part is a valid file
+            if len(parts) == 2:
+                possible_path = Path(parts[0])
+                if possible_path.exists() and possible_path.is_file():
+                    file_path = possible_path
+                    variable_name = parts[1]
 
-    path = Path(file_path_str)
-    if not path.exists():
-        raise FileNotFoundError(f"Agent file not found: {path}")
+    if file_path is None:
+        raise FileNotFoundError(f"Agent file not found: {agent_path_str}")
 
+    path = file_path
     module_name = path.stem
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
@@ -60,7 +74,8 @@ def load_agent_from_path(agent_path_str: str) -> Construct:
         missing = [attr for attr in required_attrs if not hasattr(agent_obj, attr)]
         if missing:
             raise TypeError(
-                f"Agent object '{variable_name}' does not satisfy Construct protocol. Missing attributes: {missing}"
+                f"Agent object '{variable_name}' does not satisfy Construct protocol. "
+                f"Missing attributes: {missing}"
             )
 
     return cast(Construct, agent_obj)

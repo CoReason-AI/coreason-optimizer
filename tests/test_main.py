@@ -121,7 +121,10 @@ def test_tune_command_success(
         assert config.max_bootstrapped_demos == 2
 
 
-def test_tune_command_bootstrap(runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path) -> None:
+def test_tune_command_bootstrap(
+    runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path, tmp_path: Path
+) -> None:
+    output = tmp_path / "bootstrap.json"
     with (
         patch("coreason_optimizer.main.OpenAIClient"),
         patch("coreason_optimizer.main.BootstrapFewShot") as MockBootstrap,
@@ -146,11 +149,14 @@ def test_tune_command_bootstrap(runner: CliRunner, mock_agent_file: Path, mock_d
                 str(mock_dataset_file),
                 "--strategy",
                 "bootstrap",
+                "--output",
+                str(output),
             ],
         )
 
         assert result.exit_code == 0
         assert MockBootstrap.called
+        assert output.exists()
 
 
 def test_tune_agent_not_found(runner: CliRunner, mock_dataset_file: Path) -> None:
