@@ -228,7 +228,8 @@ def test_tune_save_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset_f
             ["tune", "--agent", str(mock_agent_file), "--dataset", str(mock_dataset_file), "--output", str(out_dir)],
         )
         assert result.exit_code != 0
-        assert "Is a directory" in result.output
+        # Windows raises Permission denied, Linux raises Is a directory
+        assert "Is a directory" in result.output or "Permission denied" in result.output
 
 
 def test_evaluate_client_fail(runner: CliRunner, mock_manifest_file: Path, mock_dataset_file: Path) -> None:
