@@ -11,6 +11,8 @@
 import uuid
 from typing import Any
 
+from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
+from coreason_optimizer.core.client import BudgetAwareLLMClient
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import (
     Construct,
@@ -35,9 +37,11 @@ class BootstrapFewShot(PromptOptimizer):
         metric: Metric,
         config: OptimizerConfig,
     ):
-        self.llm_client = llm_client
         self.metric = metric
         self.config = config
+        # Wrap client with Budget Awareness
+        self.budget_manager = BudgetManager(config.budget_limit_usd)
+        self.llm_client = BudgetAwareLLMClient(llm_client, self.budget_manager)
 
     def _format_prompt(
         self,
@@ -117,6 +121,8 @@ class BootstrapFewShot(PromptOptimizer):
                     model=self.config.target_model,
                     temperature=0.0,  # Deterministic for mining
                 )
+            except BudgetExceededError:
+                raise
             except Exception as e:
                 logger.error(f"Error generating for example {i}: {e}")
                 continue
