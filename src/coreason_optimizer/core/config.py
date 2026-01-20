@@ -18,6 +18,10 @@ class OptimizerConfig(BaseModel):
         default="gpt-4o",
         description="The identifier of the target LLM to optimize for.",
     )
+    meta_model: str = Field(
+        default="gpt-4o",
+        description="The identifier of the meta-LLM used for instruction optimization.",
+    )
     metric: str = Field(
         default="exact_match",
         description="The metric function identifier to use for evaluation.",
