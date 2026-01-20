@@ -39,7 +39,7 @@ def test_optimization_workflow_simulation() -> None:
     mutator = IdentityMutator(llm_client=llm_mock)
     base_instruction = "Answer the question."
     # Simulate finding failures in validation (mocked)
-    failures = ["q_fail_1"]
+    failures = [TrainingExample(inputs={"q": "q_fail_1"}, reference="a_fail_1")]
 
     optimized_instruction = mutator.mutate(current_instruction=base_instruction, failed_examples=failures)
     assert optimized_instruction == base_instruction  # Identity mutator
