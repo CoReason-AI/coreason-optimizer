@@ -11,6 +11,8 @@
 import uuid
 from typing import Any
 
+from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
+from coreason_optimizer.core.client import BudgetAwareLLMClient
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import (
     Construct,
@@ -44,14 +46,17 @@ class MiproOptimizer(PromptOptimizer):
         num_instruction_candidates: int = 10,
         num_fewshot_combinations: int = 5,
     ):
-        self.llm_client = llm_client
         self.metric = metric
         self.config = config
         self.num_instruction_candidates = num_instruction_candidates
         self.num_fewshot_combinations = num_fewshot_combinations
 
+        # Wrap client with Budget Awareness
+        self.budget_manager = BudgetManager(config.budget_limit_usd)
+        self.llm_client = BudgetAwareLLMClient(llm_client, self.budget_manager)
+
         # Initialize components
-        self.mutator = LLMInstructionMutator(llm_client, config)
+        self.mutator = LLMInstructionMutator(self.llm_client, config)
         self.selector = RandomSelector(seed=42)
 
     def _format_prompt(
@@ -101,6 +106,8 @@ class MiproOptimizer(PromptOptimizer):
                 )
                 score = self.metric(response.content, example.reference)
                 total_score += score
+            except BudgetExceededError:
+                raise
             except Exception as e:
                 logger.warning(f"Error during evaluation: {e}")
                 pass
@@ -143,6 +150,8 @@ class MiproOptimizer(PromptOptimizer):
                     # We store the *prediction* in metadata for the mutator
                     example.metadata["prediction"] = response.content
                     failed_examples.append(example)
+            except BudgetExceededError:
+                raise
             except Exception as e:
                 logger.error(f"Error diagnosing example: {e}")
 
@@ -159,6 +168,8 @@ class MiproOptimizer(PromptOptimizer):
                     failed_examples=failed_examples,
                 )
                 instruction_candidates.add(new_instruction)
+            except BudgetExceededError:
+                raise
             except Exception as e:
                 logger.warning(f"Failed to generate instruction candidate {i}: {e}")
 
