@@ -138,3 +138,81 @@ def test_mipro_optimizer_resilience(mock_llm: MagicMock, mock_metric: MagicMock)
         assert manifest.few_shot_examples == []
         # Score 0.0 because default _evaluate_candidate returns 0.0 on error
         assert manifest.performance_metric == 0.0
+
+
+def test_mipro_empty_trainset(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+    """Test behavior with empty training set."""
+    config = OptimizerConfig()
+    agent = MockConstruct()
+
+    optimizer = MiproOptimizer(mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1)
+
+    # Empty trainset
+    manifest = optimizer.compile(agent, [], [])
+
+    assert manifest.optimized_instruction == agent.system_prompt
+    assert manifest.few_shot_examples == []
+    assert manifest.performance_metric == 0.0
+
+
+def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+    """Test that the optimizer selects the best combination from multiple candidates."""
+    config = OptimizerConfig(target_model="tgt", meta_model="meta-model")
+    agent = MockConstruct()
+
+    # Setup data
+    trainset = [TrainingExample(inputs={"q": "1"}, reference="A")]
+    ex1 = TrainingExample(inputs={"q": "ex"}, reference="ref")
+
+    # Metric logic: parses score from response
+    def score_parser(prediction: str, reference: Any, **kwargs: Any) -> float:
+        try:
+            return float(prediction)
+        except ValueError:
+            return 0.0
+
+    mock_metric.side_effect = score_parser
+
+    # LLM logic
+    def complex_side_effect(messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> LLMResponse:
+        content = messages[0]["content"]
+
+        # Mutation
+        if model == "meta-model":
+            return LLMResponse(content="Better Instruction", usage=UsageStats())
+
+        # Diagnosis (Original, []) -> Fail to trigger mutation
+        # Evaluated on trainset (q=1)
+        if "Original Instruction" in content and "Better Instruction" not in content and "### Examples" not in content:
+            return LLMResponse(content="0.0", usage=UsageStats())
+
+        # Evaluation (Grid Search)
+        # Check combination
+        has_better = "Better Instruction" in content
+        has_examples = "Input: q: ex" in content
+
+        if has_better and has_examples:
+            return LLMResponse(content="0.95", usage=UsageStats())
+        elif has_better:
+            return LLMResponse(content="0.8", usage=UsageStats())
+        elif has_examples:
+            return LLMResponse(content="0.6", usage=UsageStats())
+        else:  # Original, no examples
+            return LLMResponse(content="0.5", usage=UsageStats())
+
+    mock_llm.generate.side_effect = complex_side_effect
+
+    # Patch Selector to always return [ex1]
+    with patch("coreason_optimizer.strategies.mipro.RandomSelector") as MockSelectorClass:
+        mock_selector = MockSelectorClass.return_value
+        mock_selector.select.return_value = [ex1]
+
+        optimizer = MiproOptimizer(
+            mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1
+        )
+
+        manifest = optimizer.compile(agent, trainset, [])
+
+        assert manifest.optimized_instruction == "Better Instruction"
+        assert manifest.few_shot_examples == [ex1]
+        assert manifest.performance_metric == 0.95
