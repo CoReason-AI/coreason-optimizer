@@ -8,11 +8,12 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-import sys
 import shutil
+import importlib
 from pathlib import Path
+import coreason_optimizer.utils.logger
 
-def test_logger_creates_directory_coverage():
+def test_logger_creates_directory_coverage() -> None:
     """
     Test that the logger module creates the 'logs' directory if it doesn't exist.
     This is to ensure 100% coverage of the 'if not log_path.exists():' block.
@@ -29,16 +30,9 @@ def test_logger_creates_directory_coverage():
             # But for coverage we really want to hit that line.
             pass
 
-    # 2. Ensure logger module is reloaded
-    if "coreason_optimizer.utils.logger" in sys.modules:
-        del sys.modules["coreason_optimizer.utils.logger"]
+    # 2. Reload the module. This should re-execute the module-level code.
+    importlib.reload(coreason_optimizer.utils.logger)
 
-    # 3. Import the module. This should trigger the code:
-    # log_path = Path("logs")
-    # if not log_path.exists():
-    #     log_path.mkdir(...)
-    import coreason_optimizer.utils.logger
-
-    # 4. Verify directory was created
+    # 3. Verify directory was created
     assert log_path.exists()
     assert log_path.is_dir()

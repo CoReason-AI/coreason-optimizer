@@ -32,7 +32,7 @@ class MockAgent:
 
 
 class MockLLMClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.calls: list[Any] = []
 
     def generate(
@@ -46,14 +46,6 @@ class MockLLMClient:
         prompt = messages[0]["content"]
 
         # Parse prompt to find the active user input
-        # Structure is:
-        # ### System Instruction
-        # ...
-        # ### Examples
-        # ...
-        # ### User Input
-        # Input: ...
-
         parts = prompt.split("### User Input")
         user_input_part = parts[-1] if len(parts) > 1 else prompt
 
@@ -71,7 +63,7 @@ class MockLLMClient:
 
 
 class FailingLLMClient:
-    def __init__(self, fail_on_train: bool = True):
+    def __init__(self, fail_on_train: bool = True) -> None:
         self.fail_on_train = fail_on_train
 
     def generate(
@@ -83,30 +75,24 @@ class FailingLLMClient:
     ) -> LLMResponse:
         prompt = messages[0]["content"]
 
-        # Check if validation (has Examples) or training (no Examples)
-        # Note: We can't rely just on "### Examples" string because empty list means no header.
-        # But we can rely on our knowledge of the test cases.
-
         if self.fail_on_train:
             # Check if this is the training call (no 5+5)
             if "5+5" not in prompt:
                 raise RuntimeError("LLM Failure")
 
-        # For validation test case below
         if not self.fail_on_train:
             # Train step: succeed to generate a demo
             if "Input: q: 1" in prompt and "### Examples" not in prompt:
                 return LLMResponse(content="1", usage=UsageStats())
 
             # Validation step: fail
-            # Validation prompt will have the example we just generated
             if "Input: q: 2" in prompt:
                 raise RuntimeError("Validation Failure")
 
         return LLMResponse(content="42", usage=UsageStats())
 
 
-def test_bootstrap_few_shot_compile():
+def test_bootstrap_few_shot_compile() -> None:
     llm = MockLLMClient()
     metric = ExactMatch()
     config = OptimizerConfig(target_model="test-model", max_bootstrapped_demos=1)
@@ -133,11 +119,10 @@ def test_bootstrap_few_shot_compile():
     assert manifest.optimized_instruction == "Answer the question."
 
     # 3. Verify interaction with LLM
-    # Expect 2 calls for training (mining) + 1 call for validation
     assert len(llm.calls) == 3
 
 
-def test_bootstrap_few_shot_empty_trainset():
+def test_bootstrap_few_shot_empty_trainset() -> None:
     llm = MockLLMClient()
     metric = ExactMatch()
     config = OptimizerConfig()
@@ -150,7 +135,7 @@ def test_bootstrap_few_shot_empty_trainset():
     assert manifest.performance_metric == 0.0
 
 
-def test_bootstrap_limit_demos():
+def test_bootstrap_limit_demos() -> None:
     """Test that max_bootstrapped_demos is respected."""
     llm = MockLLMClient()
     metric = ExactMatch()
@@ -170,7 +155,7 @@ def test_bootstrap_limit_demos():
     assert len(manifest.few_shot_examples) == 1
 
 
-def test_bootstrap_llm_exception_mining():
+def test_bootstrap_llm_exception_mining() -> None:
     """Test exception handling during mining."""
     # This client fails on training
     llm = FailingLLMClient(fail_on_train=True)
@@ -186,7 +171,7 @@ def test_bootstrap_llm_exception_mining():
     assert len(manifest.few_shot_examples) == 0
 
 
-def test_bootstrap_llm_exception_validation():
+def test_bootstrap_llm_exception_validation() -> None:
     """Test exception handling during validation."""
     # This client fails on validation
     llm = FailingLLMClient(fail_on_train=False)

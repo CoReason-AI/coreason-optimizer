@@ -18,7 +18,7 @@ from coreason_optimizer.strategies.bootstrap import BootstrapFewShot
 
 
 class GenericMockAgent:
-    def __init__(self, system_prompt: str = "Default system prompt"):
+    def __init__(self, system_prompt: str = "Default system prompt") -> None:
         self._system_prompt = system_prompt
 
     @property
@@ -35,8 +35,8 @@ class GenericMockAgent:
 
 
 class ComplexMockLLMClient:
-    def __init__(self):
-        self.calls = []
+    def __init__(self) -> None:
+        self.calls: list[Any] = []
 
     def generate(
         self,
@@ -66,7 +66,7 @@ class ComplexMockLLMClient:
         return LLMResponse(content="unknown", usage=UsageStats())
 
 
-def test_bootstrap_non_string_inputs():
+def test_bootstrap_non_string_inputs() -> None:
     """Test that integer/float inputs are correctly formatted and processed."""
     llm = ComplexMockLLMClient()
     metric = ExactMatch()
@@ -82,12 +82,10 @@ def test_bootstrap_non_string_inputs():
     manifest = optimizer.compile(agent, trainset, [])
 
     assert len(manifest.few_shot_examples) == 1
-    # Verify it preserved the type in the stored example?
-    # The stored example is the TrainingExample object, so it should keep the original dict.
     assert manifest.few_shot_examples[0].inputs["count"] == 42
 
 
-def test_bootstrap_list_reference():
+def test_bootstrap_list_reference() -> None:
     """Test that mining works when reference is a list of valid options."""
     llm = ComplexMockLLMClient()
     metric = ExactMatch()
@@ -107,7 +105,7 @@ def test_bootstrap_list_reference():
     assert manifest.few_shot_examples[0].reference == ["red", "blue"]
 
 
-def test_bootstrap_multiline_system_prompt():
+def test_bootstrap_multiline_system_prompt() -> None:
     """Test that multiline system prompts are handled correctly."""
     llm = ComplexMockLLMClient()
     metric = ExactMatch()
@@ -123,17 +121,20 @@ def test_bootstrap_multiline_system_prompt():
 
     assert len(manifest.few_shot_examples) == 1
     assert manifest.optimized_instruction == "Line 1\nLine 2"
-    # Verify the prompt construction in the mock call if we wanted,
-    # but the fact that the mock returned "yes" implies it matched the check:
-    # if "### System Instruction\nLine 1\nLine 2" in prompt:
 
 
-def test_bootstrap_duplicate_mining():
+def test_bootstrap_duplicate_mining() -> None:
     """Test behavior when multiple identical examples succeed."""
 
     # We use a simple client for this
     class EchoLLMClient:
-        def generate(self, messages, **kwargs):
+        def generate(
+            self,
+            messages: list[dict[str, str]],
+            model: str | None = None,
+            temperature: float = 0.0,
+            **kwargs: Any,
+        ) -> LLMResponse:
             return LLMResponse(content="4", usage=UsageStats())
 
     llm = EchoLLMClient()
