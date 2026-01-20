@@ -14,7 +14,11 @@ from typing import Any
 from openai import OpenAI
 
 from coreason_optimizer.core.budget import BudgetManager
-from coreason_optimizer.core.interfaces import LLMClient, LLMResponse, UsageStats
+from coreason_optimizer.core.interfaces import (
+    LLMClient,
+    LLMResponse,
+    UsageStats,
+)
 from coreason_optimizer.utils.logger import logger
 
 # Pricing per 1M tokens (approximate as of early 2025)
@@ -22,6 +26,8 @@ PRICING = {
     "gpt-4o": {"input": 5.00, "output": 15.00},
     "gpt-4o-2024-08-06": {"input": 2.50, "output": 10.00},
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "text-embedding-3-small": {"input": 0.02, "output": 0.0},
+    "text-embedding-3-large": {"input": 0.13, "output": 0.0},
 }
 
 
@@ -132,3 +138,54 @@ class BudgetAwareLLMClient:
         self.budget_manager.consume(response.usage)
 
         return response
+
+
+class OpenAIEmbeddingClient:
+    """Implementation of EmbeddingProvider using OpenAI."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        client: OpenAI | None = None,
+        budget_manager: BudgetManager | None = None,
+    ):
+        if client:
+            self.client = client
+        else:
+            self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+        self.budget_manager = budget_manager
+
+    def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        """Generate embeddings for a list of texts."""
+        model = model or "text-embedding-3-small"
+
+        try:
+            if self.budget_manager:
+                self.budget_manager.check_budget()
+
+            # OpenAI embedding call
+            # Input can be list of strings
+            response = self.client.embeddings.create(input=texts, model=model)
+
+            embeddings = [data.embedding for data in response.data]
+
+            if self.budget_manager and response.usage:
+                tokens = response.usage.prompt_tokens
+                # Cost calculation
+                price_per_m = PRICING.get(model, {}).get("input", 0.02)
+                cost = (tokens / 1_000_000) * price_per_m
+
+                self.budget_manager.consume(
+                    UsageStats(
+                        prompt_tokens=tokens,
+                        completion_tokens=0,
+                        total_tokens=tokens,
+                        cost_usd=cost,
+                    )
+                )
+
+            return embeddings
+
+        except Exception as e:
+            logger.error(f"OpenAI Embedding failed: {e}")
+            raise

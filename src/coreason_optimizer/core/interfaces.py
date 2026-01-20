@@ -70,6 +70,15 @@ class Metric(Protocol):
         ...  # pragma: no cover
 
 
+@runtime_checkable
+class EmbeddingProvider(Protocol):
+    """Protocol for an embedding provider."""
+
+    def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        """Generate embeddings for a list of texts."""
+        ...  # pragma: no cover
+
+
 class PromptOptimizer(ABC):
     """Abstract base class for prompt optimization strategies."""
 
