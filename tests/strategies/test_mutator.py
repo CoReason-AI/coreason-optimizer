@@ -118,3 +118,70 @@ def test_llm_instruction_mutator_failure() -> None:
 
     # Should fall back to original instruction
     assert new_instruction == instruction
+
+
+def test_llm_instruction_mutator_empty_response() -> None:
+    """Test fallback when LLM returns empty string."""
+    mock_llm = Mock()
+    mock_response = MagicMock()
+    mock_response.content = "   "  # Whitespace only
+    mock_llm.generate.return_value = mock_response
+
+    config = OptimizerConfig()
+    mutator = LLMInstructionMutator(llm_client=mock_llm, config=config)
+    failed_example = TrainingExample(inputs={"q": "f"}, reference="a")
+
+    new_instruction = mutator.mutate("original", failed_examples=[failed_example])
+    assert new_instruction == "original"
+
+
+def test_llm_instruction_mutator_context_limit() -> None:
+    """Test that failed examples are truncated in the prompt."""
+    mock_llm = Mock()
+    mock_response = MagicMock()
+    mock_response.content = "new"
+    mock_llm.generate.return_value = mock_response
+
+    config = OptimizerConfig()
+    mutator = LLMInstructionMutator(llm_client=mock_llm, config=config)
+
+    # Create 20 examples
+    failures = [TrainingExample(inputs={"id": i}, reference=f"ref{i}") for i in range(20)]
+
+    mutator.mutate("instr", failed_examples=failures)
+
+    # Check prompt content
+    args, kwargs = mock_llm.generate.call_args
+    prompt = kwargs["messages"][0]["content"]
+
+    assert "Example 1:" in prompt
+    assert "Example 10:" in prompt
+    assert "Example 11:" not in prompt
+    assert "... (and 10 more failures)" in prompt
+
+
+def test_llm_instruction_mutator_complex_inputs() -> None:
+    """Test handling of complex nested input structures."""
+    mock_llm = Mock()
+    mock_response = MagicMock()
+    mock_response.content = "new"
+    mock_llm.generate.return_value = mock_response
+
+    config = OptimizerConfig()
+    mutator = LLMInstructionMutator(llm_client=mock_llm, config=config)
+
+    complex_input = {
+        "user_profile": {"age": 30, "tags": ["a", "b"]},
+        "history": [{"role": "user", "text": "hi"}],
+    }
+    failed_example = TrainingExample(inputs=complex_input, reference="resp")
+
+    mutator.mutate("instr", failed_examples=[failed_example])
+
+    args, kwargs = mock_llm.generate.call_args
+    prompt = kwargs["messages"][0]["content"]
+
+    # Verify string representation shows up
+    assert "user_profile" in prompt
+    assert "tags" in prompt
+    assert "history" in prompt

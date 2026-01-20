@@ -81,6 +81,10 @@ class LLMInstructionMutator(BaseMutator):
                     lines = lines[:-1]
                 new_instruction = "\n".join(lines).strip()
 
+            if not new_instruction:
+                logger.warning("Meta-LLM returned empty instruction. Returning original.")
+                return current_instruction
+
             return new_instruction
         except Exception as e:
             logger.error(f"Failed to mutate instruction: {e}")
@@ -97,13 +101,19 @@ class LLMInstructionMutator(BaseMutator):
             "The following examples failed with the current instruction:\n"
         )
 
-        for i, ex in enumerate(failures, 1):
+        # Limit to top 10 examples to prevent context overflow
+        display_failures = failures[:10]
+
+        for i, ex in enumerate(display_failures, 1):
             inputs_str = ", ".join(f"{k}: {v}" for k, v in ex.inputs.items())
             prediction = ex.metadata.get("prediction", "N/A")
 
             prompt += (
                 f"\nExample {i}:\nInput: {inputs_str}\nExpected Output: {ex.reference}\nActual Output: {prediction}\n"
             )
+
+        if len(failures) > 10:
+            prompt += f"\n... (and {len(failures) - 10} more failures)\n"
 
         prompt += (
             "\n\n### Task\n"
