@@ -25,7 +25,7 @@ class MockConstruct:
     outputs = ["output"]
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def mock_llm() -> MagicMock:
     llm = MagicMock()
     # Default response
@@ -33,7 +33,7 @@ def mock_llm() -> MagicMock:
     return llm
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def mock_metric() -> MagicMock:
     # Simple metric: returns 1.0 if prediction == "correct", else 0.0
     def metric_fn(prediction: str, reference: Any, **kwargs: Any) -> float:

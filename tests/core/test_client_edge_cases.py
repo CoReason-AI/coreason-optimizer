@@ -17,7 +17,7 @@ from openai import OpenAI, OpenAIError
 from coreason_optimizer.core.client import OpenAIClient
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def mock_openai_response() -> MagicMock:
     mock_response = MagicMock()
     mock_choice = MagicMock()

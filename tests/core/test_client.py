@@ -18,7 +18,7 @@ from coreason_optimizer.core.client import OpenAIClient
 from coreason_optimizer.core.interfaces import LLMResponse
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def mock_openai_response() -> MagicMock:
     mock_response = MagicMock()
     mock_choice = MagicMock()
