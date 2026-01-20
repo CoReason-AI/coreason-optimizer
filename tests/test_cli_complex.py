@@ -8,7 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -36,16 +35,11 @@ def mock_agent_file(tmp_path: Path) -> Path:
     return p
 
 
-def test_tune_empty_dataset(
-    runner: CliRunner, mock_agent_file: Path, tmp_path: Path
-) -> None:
+def test_tune_empty_dataset(runner: CliRunner, mock_agent_file: Path, tmp_path: Path) -> None:
     p = tmp_path / "empty.jsonl"
     p.write_text("", encoding="utf-8")
 
-    with patch("coreason_optimizer.main.OpenAIClient"), patch(
-        "coreason_optimizer.main.MiproOptimizer"
-    ) as MockOpt:
-
+    with patch("coreason_optimizer.main.OpenAIClient"), patch("coreason_optimizer.main.MiproOptimizer") as MockOpt:
         MockOpt.return_value.compile.return_value = OptimizedManifest(
             agent_id="test",
             base_model="gpt-4o",
@@ -55,26 +49,19 @@ def test_tune_empty_dataset(
             optimization_run_id="run",
         )
 
-        result = runner.invoke(
-            cli, ["tune", "--agent", str(mock_agent_file), "--dataset", str(p)]
-        )
+        result = runner.invoke(cli, ["tune", "--agent", str(mock_agent_file), "--dataset", str(p)])
         assert result.exit_code == 0
         assert "Optimization complete" in result.output
 
 
-def test_tune_output_parent_missing(
-    runner: CliRunner, mock_agent_file: Path, tmp_path: Path
-) -> None:
+def test_tune_output_parent_missing(runner: CliRunner, mock_agent_file: Path, tmp_path: Path) -> None:
     p = tmp_path / "data.jsonl"
     p.write_text('{"input":{"i":"1"},"output":"2"}\n', encoding="utf-8")
 
     output = tmp_path / "missing_dir" / "out.json"
     # missing_dir does not exist
 
-    with patch("coreason_optimizer.main.OpenAIClient"), patch(
-        "coreason_optimizer.main.MiproOptimizer"
-    ) as MockOpt:
-
+    with patch("coreason_optimizer.main.OpenAIClient"), patch("coreason_optimizer.main.MiproOptimizer") as MockOpt:
         MockOpt.return_value.compile.return_value = OptimizedManifest(
             agent_id="test",
             base_model="gpt-4o",
@@ -99,15 +86,10 @@ def test_tune_output_parent_missing(
         assert result.exit_code != 0
         # Error message usually contains "No such file or directory" or "FileNotFoundError"
         # On Windows/Linux it might vary slightly but "No such file or directory" is common in str(e)
-        assert (
-            "No such file or directory" in result.output
-            or "FileNotFoundError" in result.output
-        )
+        assert "No such file or directory" in result.output or "FileNotFoundError" in result.output
 
 
-def test_integration_tune_evaluate(
-    runner: CliRunner, mock_agent_file: Path, tmp_path: Path
-) -> None:
+def test_integration_tune_evaluate(runner: CliRunner, mock_agent_file: Path, tmp_path: Path) -> None:
     # Data
     data_file = tmp_path / "data.jsonl"
     data_file.write_text('{"input":{"i":"q"},"reference":"a"}\n', encoding="utf-8")
@@ -115,18 +97,16 @@ def test_integration_tune_evaluate(
     output_manifest = tmp_path / "manifest.json"
 
     # Mocks
-    with patch("coreason_optimizer.main.OpenAIClient") as MockClient, patch(
-        "coreason_optimizer.main.MiproOptimizer"
-    ) as MockOpt:
-
+    with (
+        patch("coreason_optimizer.main.OpenAIClient") as MockClient,
+        patch("coreason_optimizer.main.MiproOptimizer") as MockOpt,
+    ):
         # Tune Step
         manifest = OptimizedManifest(
             agent_id="test",
             base_model="gpt-4o",
             optimized_instruction="optimized_sys",
-            few_shot_examples=[
-                TrainingExample(inputs={"i": "ex_q"}, reference="ex_a")
-            ],
+            few_shot_examples=[TrainingExample(inputs={"i": "ex_q"}, reference="ex_a")],
             performance_metric=1.0,
             optimization_run_id="run_1",
         )
@@ -181,9 +161,7 @@ def test_evaluate_f1_score(runner: CliRunner, tmp_path: Path) -> None:
     manifest_file.write_text(manifest.model_dump_json(), encoding="utf-8")
 
     data_file = tmp_path / "data.jsonl"
-    data_file.write_text(
-        '{"input":{"i":"q"},"reference":"token match"}\n', encoding="utf-8"
-    )
+    data_file.write_text('{"input":{"i":"q"},"reference":"token match"}\n', encoding="utf-8")
 
     with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
         # Prediction has partial overlap "token"
