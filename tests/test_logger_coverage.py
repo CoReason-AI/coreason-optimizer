@@ -9,36 +9,36 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import sys
-from unittest.mock import MagicMock, patch
+import shutil
+from pathlib import Path
 
+def test_logger_creates_directory_coverage():
+    """
+    Test that the logger module creates the 'logs' directory if it doesn't exist.
+    This is to ensure 100% coverage of the 'if not log_path.exists():' block.
+    """
+    log_path = Path("logs")
 
-def test_logger_creates_directory_if_missing():
-    # Remove logger from sys.modules to force re-import
+    # 1. Clean up existing logs directory if possible
+    # Note: On some systems, this might fail if a file is locked, but on Linux (CI) it usually works.
+    if log_path.exists():
+        try:
+            shutil.rmtree(log_path)
+        except OSError:
+            # If we can't delete it (e.g. open file), we might skip this test or try another way.
+            # But for coverage we really want to hit that line.
+            pass
+
+    # 2. Ensure logger module is reloaded
     if "coreason_optimizer.utils.logger" in sys.modules:
         del sys.modules["coreason_optimizer.utils.logger"]
 
-    # We need to patch pathlib.Path because the module uses `from pathlib import Path`
-    # and executes code at module level.
-    with patch("pathlib.Path") as MockPath:
-        # Mock instance
-        mock_path_instance = MagicMock()
-        MockPath.return_value = mock_path_instance
+    # 3. Import the module. This should trigger the code:
+    # log_path = Path("logs")
+    # if not log_path.exists():
+    #     log_path.mkdir(...)
+    import coreason_optimizer.utils.logger
 
-        # Setup: Path("logs") -> mock_path_instance
-        # We need to make sure subsequent calls (if any) behave sanely,
-        # but the module only calls Path("logs") and "logs/app.log" (in logger.add)
-
-        # Simulate directory does NOT exist
-        mock_path_instance.exists.return_value = False
-
-        # Import the module
-
-        # Verify mkdir was called
-        # The module calls Path("logs")
-        # Then calls exists() on it
-        # Then calls mkdir()
-        mock_path_instance.mkdir.assert_called_with(parents=True, exist_ok=True)
-
-    # Cleanup: remove from sys.modules again to prevent using the mocked version later
-    if "coreason_optimizer.utils.logger" in sys.modules:
-        del sys.modules["coreason_optimizer.utils.logger"]
+    # 4. Verify directory was created
+    assert log_path.exists()
+    assert log_path.is_dir()
