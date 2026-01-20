@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 
 from jinja2 import Template
 
+from coreason_optimizer.core.budget import BudgetExceededError
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import LLMClient
 from coreason_optimizer.core.models import TrainingExample
@@ -113,6 +114,8 @@ class LLMInstructionMutator(BaseMutator):
                 return current_instruction
 
             return new_instruction
+        except BudgetExceededError:
+            raise
         except Exception as e:
             logger.error(f"Failed to mutate instruction: {e}")
             return current_instruction

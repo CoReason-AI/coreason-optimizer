@@ -13,7 +13,8 @@ from typing import Any
 
 from openai import OpenAI
 
-from coreason_optimizer.core.interfaces import LLMResponse, UsageStats
+from coreason_optimizer.core.budget import BudgetManager
+from coreason_optimizer.core.interfaces import LLMClient, LLMResponse, UsageStats
 from coreason_optimizer.utils.logger import logger
 
 # Pricing per 1M tokens (approximate as of early 2025)
@@ -99,3 +100,35 @@ class OpenAIClient:
         except Exception as e:
             logger.error(f"OpenAI API call failed: {e}")
             raise
+
+
+class BudgetAwareLLMClient:
+    """Wrapper for LLMClient that enforces a budget."""
+
+    def __init__(self, client: LLMClient, budget_manager: BudgetManager):
+        self.client = client
+        self.budget_manager = budget_manager
+
+    def generate(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """Generate response and consume budget."""
+        # 0. Check Budget Pre-flight
+        self.budget_manager.check_budget()
+
+        # 1. Generate
+        response = self.client.generate(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            **kwargs,
+        )
+
+        # 2. Track Budget
+        self.budget_manager.consume(response.usage)
+
+        return response
