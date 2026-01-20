@@ -32,6 +32,9 @@ class BudgetManager:
 
     def consume(self, usage: UsageStats) -> None:
         """Accumulate usage stats."""
+        if usage.cost_usd < 0 or usage.total_tokens < 0 or usage.prompt_tokens < 0 or usage.completion_tokens < 0:
+            raise ValueError("Usage stats cannot be negative.")
+
         self.total_cost_usd += usage.cost_usd
         self.total_prompt_tokens += usage.prompt_tokens
         self.total_completion_tokens += usage.completion_tokens
