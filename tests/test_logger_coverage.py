@@ -8,10 +8,12 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-import shutil
 import importlib
+import shutil
 from pathlib import Path
+
 import coreason_optimizer.utils.logger
+
 
 def test_logger_creates_directory_coverage() -> None:
     """
