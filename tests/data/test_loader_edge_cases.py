@@ -14,7 +14,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from coreason_optimizer.data.loader import Dataset
 
 
