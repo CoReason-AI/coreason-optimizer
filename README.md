@@ -65,7 +65,7 @@ poetry run coreason-opt tune \
 *   `--agent`: Path to the agent file and class/object (e.g., `path/to/file.py:AgentClass`).
 *   `--dataset`: Path to the dataset (`.csv` or `.jsonl`).
 *   `--strategy`: Optimization strategy: `mipro` (default) or `bootstrap`.
-*   --`selector`: Example selection strategy: `random` or `semantic` (requires embeddings).
+*   `--selector`: Example selection strategy: `random` or `semantic` (requires embeddings).
 *   `--base-model`: Target LLM model (overrides config).
 *   `--epochs`: Max optimization rounds/candidates.
 *   `--demos`: Max number of few-shot examples.
@@ -85,7 +85,44 @@ poetry run coreason-opt evaluate \
 **Options:**
 *   `--manifest`: Path to the optimized manifest JSON file.
 *   `--dataset`: Path to the evaluation dataset.
-*   `--metric`: Metric to use: `exact_match` or `f1_score`.
+*   `--metric`: Metric to use: `exact_match`, `f1_score`, or `json_validity`.
+
+## Library Usage
+
+You can also use `coreason-optimizer` directly in Python for more advanced configuration.
+
+```python
+from coreason_optimizer.core.config import OptimizerConfig
+from coreason_optimizer.core.client import OpenAIClient
+from coreason_optimizer.core.metrics import MetricFactory
+from coreason_optimizer.strategies.mipro import MiproOptimizer
+from coreason_optimizer.data.loader import Dataset
+# Assuming you have an Agent object that satisfies the Construct protocol
+# from my_agent import agent
+
+# 1. Configure
+config = OptimizerConfig(
+    target_model="gpt-4o",
+    budget_limit_usd=5.0,
+    max_rounds=5
+)
+
+# 2. Initialize Components
+client = OpenAIClient()
+metric = MetricFactory.get("exact_match")
+optimizer = MiproOptimizer(client, metric, config)
+
+# 3. Load Data
+train_set = Dataset.from_csv("data/train.csv", input_cols=["question"], reference_col="answer")
+val_set = Dataset.from_csv("data/val.csv", input_cols=["question"], reference_col="answer")
+
+# 4. Compile (Requires 'agent' object)
+# manifest = optimizer.compile(agent, list(train_set), list(val_set))
+
+# 5. Save
+# with open("optimized_manifest.json", "w") as f:
+#     f.write(manifest.model_dump_json(indent=2))
+```
 
 ## Configuration
 
@@ -100,7 +137,7 @@ You can configure the optimizer defaults via `OptimizerConfig`.
 | `embedding_model` | str | `text-embedding-3-small` | Embedding model for semantic selection. |
 | `max_bootstrapped_demos` | int | 4 | Maximum number of few-shot examples to bootstrap. |
 | `max_rounds` | int | 10 | Maximum number of optimization rounds. |
-| `budget_limit_usd` | float | 10.00 | Maximum budget in USD for the run. |
+| `budget_limit_usd` | float | 10.00 | Maximum budget in USD for the optimization run. |
 
 ## Development
 
