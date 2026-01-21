@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+LLM Client implementations for interacting with OpenAI API.
+
+This module provides clients for generating text and embeddings,
+along with wrappers for budget tracking.
+"""
+
 import os
 from typing import Any
 
@@ -34,7 +41,17 @@ PRICING = {
 
 
 def calculate_openai_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate the cost of an OpenAI API call."""
+    """
+    Calculate the cost of an OpenAI API call based on model and usage.
+
+    Args:
+        model: The model identifier (e.g., 'gpt-4o').
+        input_tokens: Number of prompt tokens.
+        output_tokens: Number of completion tokens.
+
+    Returns:
+        The estimated cost in USD.
+    """
     # Simple fuzzy matching for model names
     sorted_keys = sorted(PRICING.keys(), key=len, reverse=True)
 
@@ -57,6 +74,13 @@ class OpenAIClient:
     """Concrete implementation of LLMClient using OpenAI."""
 
     def __init__(self, api_key: str | None = None, client: OpenAI | None = None):
+        """
+        Initialize the OpenAIClient.
+
+        Args:
+            api_key: Optional API key. If not provided, reads from OPENAI_API_KEY env var.
+            client: Optional pre-configured OpenAI client instance.
+        """
         if client:
             self.client = client
         else:
@@ -69,6 +93,21 @@ class OpenAIClient:
         temperature: float = 0.0,
         **kwargs: Any,
     ) -> LLMResponse:
+        """
+        Generate a response from the OpenAI LLM.
+
+        Args:
+            messages: A list of message dictionaries (role, content).
+            model: The model identifier to use (default: 'gpt-4o').
+            temperature: Sampling temperature (default: 0.0).
+            **kwargs: Additional arguments passed to the OpenAI API.
+
+        Returns:
+            LLMResponse containing the content and usage statistics.
+
+        Raises:
+            ValueError: If streaming is requested (not supported).
+        """
         model = model or "gpt-4o"
 
         if kwargs.get("stream"):
@@ -108,6 +147,13 @@ class BudgetAwareLLMClient:
     """Wrapper for LLMClient that enforces a budget."""
 
     def __init__(self, client: LLMClient, budget_manager: BudgetManager):
+        """
+        Initialize the BudgetAwareLLMClient.
+
+        Args:
+            client: The underlying LLMClient to wrap.
+            budget_manager: The BudgetManager to track usage.
+        """
         self.client = client
         self.budget_manager = budget_manager
 
@@ -118,7 +164,20 @@ class BudgetAwareLLMClient:
         temperature: float = 0.0,
         **kwargs: Any,
     ) -> LLMResponse:
-        """Generate response and consume budget."""
+        """
+        Generate response and consume budget.
+
+        Checks budget before and updates budget after the call.
+
+        Args:
+            messages: A list of message dictionaries.
+            model: The model identifier.
+            temperature: Sampling temperature.
+            **kwargs: Additional arguments.
+
+        Returns:
+            LLMResponse.
+        """
         # 0. Check Budget Pre-flight
         self.budget_manager.check_budget()
 
@@ -140,13 +199,29 @@ class OpenAIEmbeddingClient:
     """Implementation of EmbeddingProvider using OpenAI."""
 
     def __init__(self, api_key: str | None = None, client: OpenAI | None = None):
+        """
+        Initialize the OpenAIEmbeddingClient.
+
+        Args:
+            api_key: Optional API key. If not provided, reads from OPENAI_API_KEY env var.
+            client: Optional pre-configured OpenAI client instance.
+        """
         if client:
             self.client = client
         else:
             self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
 
     def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
-        """Generate embeddings for a list of texts (with batching)."""
+        """
+        Generate embeddings for a list of texts (with batching).
+
+        Args:
+            texts: List of strings to embed.
+            model: The embedding model to use (default: 'text-embedding-3-small').
+
+        Returns:
+            EmbeddingResponse containing embeddings and usage stats.
+        """
         model = model or "text-embedding-3-small"
         batch_size = 500
         all_embeddings = []
@@ -184,10 +259,27 @@ class BudgetAwareEmbeddingProvider:
     """Wrapper for EmbeddingProvider that enforces a budget."""
 
     def __init__(self, provider: EmbeddingProvider, budget_manager: BudgetManager):
+        """
+        Initialize the BudgetAwareEmbeddingProvider.
+
+        Args:
+            provider: The underlying EmbeddingProvider to wrap.
+            budget_manager: The BudgetManager to track usage.
+        """
         self.provider = provider
         self.budget_manager = budget_manager
 
     def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+        """
+        Generate embeddings and consume budget.
+
+        Args:
+            texts: List of strings to embed.
+            model: The embedding model to use.
+
+        Returns:
+            EmbeddingResponse.
+        """
         self.budget_manager.check_budget()
         response = self.provider.embed(texts, model)
         self.budget_manager.consume(response.usage)
