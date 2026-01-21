@@ -13,7 +13,7 @@ from pathlib import Path
 
 import click
 
-from coreason_optimizer.core.client import OpenAIClient
+from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import PromptOptimizer
 from coreason_optimizer.core.metrics import MetricFactory
@@ -52,6 +52,11 @@ def cli() -> None:
     default="mipro",
     help="Optimization strategy",
 )
+@click.option(
+    "--selector",
+    type=click.Choice(["random", "semantic"]),
+    help="Selector strategy (random or semantic)",
+)
 def tune(
     agent: str,
     dataset: str,
@@ -60,6 +65,7 @@ def tune(
     demos: int | None,
     output: str,
     strategy: str,
+    selector: str | None,
 ) -> None:
     """Optimize an agent's prompt against a dataset."""
     logger.info(f"Starting optimization for agent: {agent}")
@@ -100,6 +106,8 @@ def tune(
         config.max_rounds = epochs
     if demos:
         config.max_bootstrapped_demos = demos
+    if selector:
+        config.selector_type = selector  # type: ignore
 
     # Client
     # Uses OPENAI_API_KEY env var
@@ -120,7 +128,16 @@ def tune(
     if strategy == "bootstrap":
         optimizer = BootstrapFewShot(client, metric, config)
     else:
-        optimizer = MiproOptimizer(client, metric, config)
+        embedding_provider = None
+        if config.selector_type == "semantic":
+            # Initialize embedding provider
+            try:
+                embedding_provider = OpenAIEmbeddingClient()
+            except Exception as e:
+                logger.error(f"Failed to initialize OpenAI Embedding Client: {e}")
+                raise click.ClickException("Failed to initialize OpenAI Embedding Client. Check OPENAI_API_KEY.") from e
+
+        optimizer = MiproOptimizer(client, metric, config, embedding_provider=embedding_provider)
 
     # Run
     try:
