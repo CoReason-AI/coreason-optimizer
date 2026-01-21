@@ -12,10 +12,14 @@ import uuid
 from typing import Any
 
 from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
-from coreason_optimizer.core.client import BudgetAwareLLMClient
+from coreason_optimizer.core.client import (
+    BudgetAwareEmbeddingProvider,
+    BudgetAwareLLMClient,
+)
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import (
     Construct,
+    EmbeddingProvider,
     LLMClient,
     Metric,
     PromptOptimizer,
@@ -23,7 +27,11 @@ from coreason_optimizer.core.interfaces import (
 from coreason_optimizer.core.models import OptimizedManifest, TrainingExample
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.mutator import LLMInstructionMutator
-from coreason_optimizer.strategies.selector import RandomSelector
+from coreason_optimizer.strategies.selector import (
+    BaseSelector,
+    RandomSelector,
+    SemanticSelector,
+)
 from coreason_optimizer.utils.logger import logger
 
 
@@ -43,6 +51,7 @@ class MiproOptimizer(PromptOptimizer):
         llm_client: LLMClient,
         metric: Metric,
         config: OptimizerConfig,
+        embedding_provider: EmbeddingProvider | None = None,
         num_instruction_candidates: int = 10,
         num_fewshot_combinations: int = 5,
     ):
@@ -57,7 +66,17 @@ class MiproOptimizer(PromptOptimizer):
 
         # Initialize components
         self.mutator = LLMInstructionMutator(self.llm_client, config)
-        self.selector = RandomSelector(seed=42)
+
+        self.selector: BaseSelector
+        if config.selector_type == "semantic":
+            if not embedding_provider:
+                raise ValueError("Embedding provider is required for semantic selection.")
+
+            # Wrap embedding provider sharing the SAME budget manager
+            wrapped_embedder = BudgetAwareEmbeddingProvider(embedding_provider, self.budget_manager)
+            self.selector = SemanticSelector(wrapped_embedder, seed=42, embedding_model=config.embedding_model)
+        else:
+            self.selector = RandomSelector(seed=42)
 
     def _format_prompt(
         self,

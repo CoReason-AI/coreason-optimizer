@@ -9,7 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
@@ -150,3 +150,24 @@ def test_semantic_selector_edge_cases() -> None:
     assert len(selected) == 3
     inputs = sorted([ex.inputs["q"] for ex in selected])
     assert inputs == ["A", "A", "B"]
+
+
+def test_semantic_selector_respects_model() -> None:
+    """Test that SemanticSelector passes the configured model to the provider."""
+    mock_provider = MagicMock(spec=EmbeddingProvider)
+    mock_provider.embed.return_value = EmbeddingResponse(embeddings=[[0.1, 0.1], [0.2, 0.2]], usage=UsageStats())
+
+    model_name = "test-embedding-v2"
+    selector = SemanticSelector(mock_provider, embedding_model=model_name)
+
+    ds = Dataset(
+        [
+            TrainingExample(inputs={"q": "1"}, reference="A"),
+            TrainingExample(inputs={"q": "2"}, reference="B"),
+        ]
+    )
+    selector.select(ds, k=1)
+
+    mock_provider.embed.assert_called_once()
+    args, kwargs = mock_provider.embed.call_args
+    assert kwargs.get("model") == model_name
