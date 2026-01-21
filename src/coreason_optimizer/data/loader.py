@@ -18,8 +18,8 @@ and split it into training, validation, and test sets.
 import csv
 import json
 import random
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 from coreason_optimizer.core.models import TrainingExample
 
@@ -42,7 +42,7 @@ class Dataset:
     def __getitem__(self, idx: int) -> TrainingExample:
         return self.examples[idx]
 
-    def __iter__(self) -> Any:
+    def __iter__(self) -> Iterator[TrainingExample]:
         return iter(self.examples)
 
     @classmethod
