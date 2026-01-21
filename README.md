@@ -67,4 +67,3 @@ optimized_manifest = optimizer.compile(
 
 print(f"Optimization complete. New Score: {optimized_manifest.performance_metric}")
 print(f"Optimized Instruction: {optimized_manifest.optimized_instruction}")
-```

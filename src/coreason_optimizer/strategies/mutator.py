@@ -72,7 +72,16 @@ class IdentityMutator(BaseMutator):
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
     ) -> str:
-        """Return the instruction as-is."""
+        """
+        Return the instruction as-is.
+
+        Args:
+            current_instruction: The instruction.
+            failed_examples: Ignored.
+
+        Returns:
+            The same instruction.
+        """
         return current_instruction
 
 

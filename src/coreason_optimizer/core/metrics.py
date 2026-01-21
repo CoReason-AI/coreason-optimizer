@@ -24,7 +24,15 @@ from coreason_optimizer.core.interfaces import Metric
 
 
 def normalize_answer(s: str) -> str:
-    """Lower text and remove punctuation, articles and extra whitespace."""
+    """
+    Lower text and remove punctuation, articles and extra whitespace.
+
+    Args:
+        s: The input string.
+
+    Returns:
+        Normalized string.
+    """
 
     def remove_articles(text: str) -> str:
         return re.sub(r"\b(a|an|the)\b", " ", text)

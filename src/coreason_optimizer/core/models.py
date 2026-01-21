@@ -21,7 +21,14 @@ from pydantic import BaseModel, Field
 
 
 class TrainingExample(BaseModel):
-    """A single example for training or few-shot prompting."""
+    """
+    A single example for training or few-shot prompting.
+
+    Attributes:
+        inputs: Input variables mapping to the agent's expected inputs.
+        reference: The ground truth or expected output for the example.
+        metadata: Optional metadata (e.g. source, tags).
+    """
 
     inputs: dict[str, Any] = Field(..., description="Input variables mapping to the agent's expected inputs.")
     reference: Any = Field(..., description="The ground truth or expected output for the example.")
@@ -29,7 +36,17 @@ class TrainingExample(BaseModel):
 
 
 class OptimizedManifest(BaseModel):
-    """The output artifact of the optimization process."""
+    """
+    The output artifact of the optimization process.
+
+    Attributes:
+        agent_id: The unique identifier of the agent.
+        base_model: The base LLM model used.
+        optimized_instruction: The optimized system prompt.
+        few_shot_examples: Selected few-shot examples.
+        performance_metric: The score achieved on the validation set.
+        optimization_run_id: Unique ID for this optimization run.
+    """
 
     agent_id: str = Field(..., description="The unique identifier of the agent.")
     base_model: str = Field(..., description="The base LLM model used.")
