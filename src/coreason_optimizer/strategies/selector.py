@@ -85,7 +85,12 @@ class SemanticSelector(BaseSelector):
     3. Select the example closest to the centroid of each cluster.
     """
 
-    def __init__(self, embedding_provider: EmbeddingProvider, seed: int = 42, embedding_model: str | None = None):
+    def __init__(
+        self,
+        embedding_provider: EmbeddingProvider,
+        seed: int = 42,
+        embedding_model: str | None = None,
+    ):
         """
         Initialize SemanticSelector.
 
