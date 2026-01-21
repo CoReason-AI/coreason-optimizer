@@ -21,7 +21,19 @@ from pydantic import BaseModel, Field
 
 
 class OptimizerConfig(BaseModel):
-    """Configuration for the Prompt Optimizer."""
+    """
+    Configuration for the Prompt Optimizer.
+
+    Attributes:
+        target_model: The identifier of the target LLM to optimize for.
+        meta_model: The identifier of the meta-LLM used for instruction optimization.
+        metric: The metric function identifier to use for evaluation.
+        selector_type: The strategy to use for selecting few-shot examples.
+        embedding_model: The identifier of the embedding model (used if selector_type is semantic).
+        max_bootstrapped_demos: Maximum number of few-shot examples to bootstrap.
+        max_rounds: Maximum number of optimization rounds.
+        budget_limit_usd: Maximum budget in USD for the optimization run.
+    """
 
     target_model: str = Field(
         default="gpt-4o",

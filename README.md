@@ -1,21 +1,15 @@
 # coreason-optimizer
 
-**The Compiler for the CoReason Agentic Platform.**
+**Automated Prompt Engineering / LLM Compilation / DSPy Integration for CoReason-AI**
 
-[![Organization](https://img.shields.io/badge/org-CoReason--AI-blue)](https://github.com/CoReason-AI)
-[![License](https://img.shields.io/badge/License-Prosperity%203.0-blue)](https://prosperitylicense.com/versions/3.0.0)
-[![CI](https://github.com/CoReason-AI/coreason_optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/CoReason-AI/coreason_optimizer/actions)
-[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![License: Prosperity 3.0](https://img.shields.io/badge/license-Prosperity%203.0-blue)](https://prosperitylicense.com/versions/3.0.0)
+[![CI Status](https://github.com/CoReason-AI/coreason-optimizer/actions/workflows/main.yml/badge.svg)](https://github.com/CoReason-AI/coreason-optimizer/actions)
+[![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Documentation](https://img.shields.io/badge/docs-product_requirements-blue)](docs/product_requirements.md)
 
-**coreason-optimizer** automates the process of prompt engineering by treating prompts as trainable weights. It takes a "Draft Agent" and iterates on it against a ground-truth dataset to mathematically maximize performance metrics, producing a frozen, production-ready manifest.
+**coreason-optimizer** is the "Compiler" for the CoReason Agentic Platform. It automates prompt engineering by treating prompts as trainable weights, optimizing them against ground-truth datasets to maximize performance metrics.
 
-## Features
-
-*   **Automated Optimization:** Replaces manual prompt tweaking with algorithmic optimization strategies (BootstrapFewShot, MIPRO).
-*   **Model-Specific Compilation:** Tunes prompts specifically for the target model (e.g., GPT-4o, Claude 3.5), handling model quirks automatically.
-*   **Continuous Learning:**  Easily re-optimize agents as new data becomes available in `coreason-archive`, preventing drift.
-*   **Cost Awareness:** Built-in budget management to prevent runaway API costs during optimization runs.
-*   **Determinism:** Produces immutable, versioned `OptimizedManifest.json` artifacts for GxP compliance and reproducibility.
+---
 
 ## Installation
 
@@ -23,60 +17,54 @@
 pip install coreason-optimizer
 ```
 
+## Features
+
+-   **Automated Optimization:** Rewrites instructions and selects examples to maximize a score, not human intuition.
+-   **Model-Specific Compilation:** Generates optimized prompts specifically tuned for target models (e.g., GPT-4, Claude 3.5).
+-   **Continuous Learning:** Re-runs optimization on recent logs to patch prompts against data drift.
+-   **Mutate-Evaluate Loop:** Systematic cycle of drafting, evaluating, diagnosing, mutating, and selecting prompts.
+-   **Strategies:** Includes BootstrapFewShot (mining successful traces) and MIPRO (Multi-prompt Instruction PRoposal Optimizer).
+-   **Integration:** Works seamlessly with `coreason-construct`, `coreason-archive`, and `coreason-assay`.
+
+For full product requirements, see [docs/product_requirements.md](docs/product_requirements.md).
+
 ## Usage
 
-### 1. Optimize an Agent
-
-Use the CLI to optimize an agent defined in `src/agents/analyst.py`.
-
-```bash
-# Optimize using MIPRO strategy
-coreason-opt tune \
-    --agent src/agents/analyst.py \
-    --dataset data/gold_set.csv \
-    --strategy mipro \
-    --output dist/analyst_v2.json
-```
-
-### 2. Run the Optimized Agent
-
-Load the manifest and use the optimized prompt in your application code.
+Here is how to initialize and use the library to compile an agent:
 
 ```python
-import json
-from coreason_optimizer.core.models import OptimizedManifest
-from coreason_optimizer.core.formatter import format_prompt
-from coreason_optimizer.core.client import OpenAIClient
+from coreason_optimizer import OptimizerConfig, PromptOptimizer
+from coreason_optimizer.core.interfaces import Construct
+from coreason_optimizer.data import Dataset
 
-# 1. Load the optimized manifest
-with open("dist/analyst_v2.json", "r") as f:
-    manifest = OptimizedManifest(**json.load(f))
-
-# 2. Prepare user input
-user_input = {"question": "What is the capital of France?"}
-
-# 3. Format the prompt using the optimized instruction and examples
-prompt = format_prompt(
-    system_prompt=manifest.optimized_instruction,
-    examples=manifest.few_shot_examples,
-    inputs=user_input
+# 1. Configuration
+config = OptimizerConfig(
+    target_model="gpt-4o",
+    metric="exact_match",
+    max_rounds=10
 )
 
-# 4. Generate response
-client = OpenAIClient()
-response = client.generate(
-    messages=[{"role": "user", "content": prompt}],
-    model=manifest.base_model
+# 2. Load Data
+dataset = Dataset.from_csv("data/gold_set.csv")
+train_set, val_set = dataset.split(test_size=0.2)
+
+# 3. Load Agent (Construct)
+# In a real scenario, this would be imported from your agent code
+# from src.agents.analyst import analyst_agent
+class MockAgent(Construct):
+    inputs = ["question"]
+    outputs = ["answer"]
+    system_prompt = "You are a helpful assistant."
+agent = MockAgent()
+
+# 4. Compile
+optimizer = PromptOptimizer(config=config)
+optimized_manifest = optimizer.compile(
+    agent=agent,
+    trainset=train_set,
+    valset=val_set
 )
 
-print(response.content)
+print(f"Optimization complete. New Score: {optimized_manifest.performance_metric}")
+print(f"Optimized Instruction: {optimized_manifest.optimized_instruction}")
 ```
-
-## Documentation
-
-For more detailed documentation on strategies, configuration, and API references, please refer to the [docs/](docs/) directory or visit our [GitHub pages](https://github.com/CoReason-AI/coreason_optimizer).
-
-## License
-
-This software is proprietary and dual-licensed under the **Prosperity Public License 3.0**.
-Commercial use beyond a 30-day trial requires a separate license. See [LICENSE](LICENSE) for details.

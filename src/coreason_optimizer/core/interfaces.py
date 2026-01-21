@@ -24,7 +24,15 @@ from coreason_optimizer.core.models import TrainingExample
 
 
 class UsageStats(BaseModel):
-    """Token usage statistics for an LLM call."""
+    """
+    Token usage statistics for an LLM call.
+
+    Attributes:
+        prompt_tokens: Number of tokens in the prompt.
+        completion_tokens: Number of tokens in the completion.
+        total_tokens: Total tokens used.
+        cost_usd: Estimated cost in USD.
+    """
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -33,14 +41,26 @@ class UsageStats(BaseModel):
 
 
 class LLMResponse(BaseModel):
-    """Standardized response from an LLM."""
+    """
+    Standardized response from an LLM.
+
+    Attributes:
+        content: The text content of the response.
+        usage: Usage statistics for the call.
+    """
 
     content: str
     usage: UsageStats
 
 
 class EmbeddingResponse(BaseModel):
-    """Standardized response from an embedding provider."""
+    """
+    Standardized response from an embedding provider.
+
+    Attributes:
+        embeddings: List of embedding vectors.
+        usage: Usage statistics for the call.
+    """
 
     embeddings: list[list[float]]
     usage: UsageStats
@@ -48,7 +68,14 @@ class EmbeddingResponse(BaseModel):
 
 @runtime_checkable
 class Construct(Protocol):
-    """Protocol representing a coreason-construct Agent."""
+    """
+    Protocol representing a coreason-construct Agent.
+
+    Attributes:
+        inputs: List of input field names.
+        outputs: List of output field names.
+        system_prompt: The initial system prompt text.
+    """
 
     @property
     def inputs(self) -> list[str]: ...  # pragma: no cover
@@ -71,7 +98,18 @@ class LLMClient(Protocol):
         temperature: float = 0.0,
         **kwargs: Any,
     ) -> LLMResponse:
-        """Generate a response from the LLM."""
+        """
+        Generate a response from the LLM.
+
+        Args:
+            messages: A list of message dictionaries (role, content).
+            model: The model identifier to use.
+            temperature: Sampling temperature.
+            **kwargs: Additional provider-specific arguments.
+
+        Returns:
+            The LLM response containing content and usage stats.
+        """
         ...  # pragma: no cover
 
 
@@ -80,7 +118,17 @@ class Metric(Protocol):
     """Protocol for a scoring function."""
 
     def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
-        """Calculate a score for the prediction against the reference."""
+        """
+        Calculate a score for the prediction against the reference.
+
+        Args:
+            prediction: The model's output.
+            reference: The ground truth value.
+            **kwargs: Additional arguments for the metric function.
+
+        Returns:
+            A float score (typically 0.0 to 1.0).
+        """
         ...  # pragma: no cover
 
 
@@ -89,7 +137,16 @@ class EmbeddingProvider(Protocol):
     """Protocol for an embedding provider."""
 
     def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
-        """Generate embeddings for a list of texts."""
+        """
+        Generate embeddings for a list of texts.
+
+        Args:
+            texts: List of strings to embed.
+            model: The embedding model to use.
+
+        Returns:
+            An EmbeddingResponse containing vectors and usage stats.
+        """
         ...  # pragma: no cover
 
 
@@ -103,5 +160,15 @@ class PromptOptimizer(ABC):
         trainset: list[TrainingExample],
         valset: list[TrainingExample],
     ) -> Any:
-        """Run the optimization loop to produce an optimized manifest."""
+        """
+        Run the optimization loop to produce an optimized manifest.
+
+        Args:
+            agent: The draft agent to optimize.
+            trainset: List of examples for training/bootstrapping.
+            valset: List of examples for validation/evaluation.
+
+        Returns:
+            An optimized manifest object (specific type depends on implementation).
+        """
         pass  # pragma: no cover
