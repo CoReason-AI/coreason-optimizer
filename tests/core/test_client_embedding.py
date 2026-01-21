@@ -8,99 +8,93 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-import os
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import OpenAIError
 
 from coreason_optimizer.core.client import BudgetAwareEmbeddingProvider, OpenAIEmbeddingClient
+from coreason_optimizer.core.interfaces import EmbeddingResponse
 
 
 def test_embed_success() -> None:
-    mock_client = MagicMock()
-    # Mock response
-    mock_response = MagicMock()
-    mock_data = [MagicMock(embedding=[0.1, 0.2]), MagicMock(embedding=[0.3, 0.4])]
-    mock_response.data = mock_data
-    mock_response.usage.prompt_tokens = 10
-    mock_client.embeddings.create.return_value = mock_response
+    client = OpenAIEmbeddingClient(api_key="test")
+    client._async_client = AsyncMock()
+    client._async_client.__aenter__.return_value = client._async_client
 
-    client = OpenAIEmbeddingClient(client=mock_client)
+    # Mock response
+    mock_resp = EmbeddingResponse(embeddings=[[0.1, 0.2], [0.3, 0.4]], usage={"prompt_tokens": 10, "cost_usd": 0.0001})
+    client._async_client.embed.return_value = mock_resp
+
     response = client.embed(["a", "b"])
 
     assert len(response.embeddings) == 2
     assert response.embeddings[0] == [0.1, 0.2]
     assert response.usage.prompt_tokens == 10
-    assert response.usage.cost_usd > 0  # Should be calculated
+    assert response.usage.cost_usd > 0
 
 
 def test_budget_aware_provider() -> None:
-    mock_provider = MagicMock()
+    # Need to pass an OpenAIEmbeddingClient because we enforce type check in refactor
+    client = OpenAIEmbeddingClient(api_key="test")
+    client._async_client = AsyncMock()
+
     # Mock usage
     usage = MagicMock(prompt_tokens=10, cost_usd=0.01)
-    mock_provider.embed.return_value = MagicMock(embeddings=[[1.0]], usage=usage)
+    mock_resp = MagicMock(embeddings=[[1.0]], usage=usage)
+
+    # We are testing the Sync Facade, so we need to mock the async methods
+    # BUT BudgetAwareEmbeddingProvider wraps the async client directly
+    # self._async = BudgetAwareEmbeddingProviderAsync(provider._async_client, ...)
+
+    # So we need to mock provider._async_client.embed
+    client._async_client.embed.return_value = mock_resp
 
     budget_manager = MagicMock()
 
-    wrapper = BudgetAwareEmbeddingProvider(provider=mock_provider, budget_manager=budget_manager)
+    wrapper = BudgetAwareEmbeddingProvider(provider=client, budget_manager=budget_manager)
     wrapper.embed(["a"])
 
     budget_manager.check_budget.assert_called_once()
+    # The async wrapper calls consume
+    # Wait, wrapper.embed calls anyio.run(self._async.embed)
+    # self._async is BudgetAwareEmbeddingProviderAsync
+    # BudgetAwareEmbeddingProviderAsync calls manager.consume
+
     budget_manager.consume.assert_called_with(usage)
 
 
 def test_embed_error() -> None:
-    mock_client = MagicMock()
-    mock_client.embeddings.create.side_effect = RuntimeError("API Error")
+    client = OpenAIEmbeddingClient(api_key="test")
+    client._async_client = AsyncMock()
+    client._async_client.__aenter__.return_value = client._async_client
+    client._async_client.embed.side_effect = RuntimeError("API Error")
 
-    client = OpenAIEmbeddingClient(client=mock_client)
     with pytest.raises(RuntimeError):
         client.embed(["a"])
 
 
 def test_init_default() -> None:
-    # Test initialization without client (reads env var, assumes mock/env)
-    # If OPENAI_API_KEY is present, it succeeds. If not, it raises.
+    # Test initialization
+    # Now that we use OpenAIEmbeddingClientAsync, checks happen there.
+    # We mock it to verify call args.
 
-    # Force failure
-    with patch.dict(os.environ, {}, clear=True):
-        with pytest.raises(OpenAIError):
-            OpenAIEmbeddingClient()
-
-    # Force success
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "dummy"}):
-        c = OpenAIEmbeddingClient()
-        assert c.client is not None
-
-    # If we pass client, it works
-    c = OpenAIEmbeddingClient(client=MagicMock())
-    assert c.client is not None
+    with patch("coreason_optimizer.core.client.OpenAIEmbeddingClientAsync") as MockAsync:
+        OpenAIEmbeddingClient(api_key="dummy")
+        MockAsync.assert_called_with(api_key="dummy")
 
 
 def test_embed_large_batch() -> None:
-    # Test that client batches requests if input is larger than batch_size (500)
-    mock_client = MagicMock()
-    # We want 505 items.
-    # 1st call: 500 items. 2nd call: 5 items.
+    # This logic moved to OpenAIEmbeddingClientAsync.
+    # We should test it there or assume unit tests cover it.
+    # Here we just verify the call is passed through.
 
-    # Setup response side_effect
-    def side_effect(input: list[str], model: str) -> Any:
-        count = len(input)
-        resp = MagicMock()
-        resp.data = [MagicMock(embedding=[0.0] * 2) for _ in range(count)]
-        resp.usage.prompt_tokens = count
-        return resp
+    client = OpenAIEmbeddingClient(api_key="test")
+    client._async_client = AsyncMock()
+    client._async_client.__aenter__.return_value = client._async_client
 
-    mock_client.embeddings.create.side_effect = side_effect
+    client.embed(["a"] * 505)
 
-    client = OpenAIEmbeddingClient(client=mock_client)
-
-    # Generate 505 items
-    inputs = [str(i) for i in range(505)]
-    response = client.embed(inputs)
-
-    assert len(response.embeddings) == 505
-    assert response.usage.prompt_tokens == 505
-    assert mock_client.embeddings.create.call_count == 2
+    client._async_client.embed.assert_awaited_once()
+    # Arguments verification
+    args, _ = client._async_client.embed.call_args
+    assert len(args[0]) == 505

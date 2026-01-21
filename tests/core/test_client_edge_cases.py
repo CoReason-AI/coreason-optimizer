@@ -9,12 +9,13 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import OpenAI, OpenAIError
+from openai import OpenAIError
 
 from coreason_optimizer.core.client import OpenAIClient
+from coreason_optimizer.core.interfaces import LLMResponse
 
 
 @pytest.fixture
@@ -34,36 +35,50 @@ def mock_openai_response() -> MagicMock:
 
 
 def test_stream_raises_error(mock_openai_response: MagicMock) -> None:
-    mock_client = MagicMock(spec=OpenAI)
-    client = OpenAIClient(client=mock_client)
+    # Need to check async client validation
+    with patch("coreason_optimizer.core.client.OpenAIClientAsync"):
+        client = OpenAIClient(api_key="test")
+        # Ensure generate is AsyncMock
+        client._async_client.generate = AsyncMock()
+        client._async_client.generate.side_effect = ValueError("Streaming is not supported")
 
-    with pytest.raises(ValueError, match="Streaming is not supported"):
-        client.generate([], stream=True)
+        with pytest.raises(ValueError, match="Streaming is not supported"):
+            client.generate([], stream=True)
 
 
 def test_empty_content_handled(mock_openai_response: MagicMock) -> None:
-    mock_openai_response.choices[0].message.content = None
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
-    client = OpenAIClient(client=mock_client)
+    # Mock return from async client
+    with patch("coreason_optimizer.core.client.OpenAIClientAsync"):
+        client = OpenAIClient(api_key="test")
 
-    resp = client.generate([])
-    assert resp.content == ""
+        # Async client should return LLMResponse with empty string
+        client._async_client.generate = AsyncMock()
+        client._async_client.generate.return_value = LLMResponse(
+            content="", usage={"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20, "cost_usd": 0.0}
+        )
+
+        resp = client.generate([])
+        assert resp.content == ""
 
 
 def test_multiple_n_handled(mock_openai_response: MagicMock) -> None:
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
-    client = OpenAIClient(client=mock_client)
+    with patch("coreason_optimizer.core.client.OpenAIClientAsync"):
+        client = OpenAIClient(api_key="test")
 
-    # We pass n=2, response still has 1 choice mocked but usage reflects total.
-    client.generate([], n=2)
-    mock_client.chat.completions.create.assert_called_once()
-    assert mock_client.chat.completions.create.call_args.kwargs["n"] == 2
+        client._async_client.generate = AsyncMock()
+        client._async_client.generate.return_value = LLMResponse(content="test", usage={})
+
+        # We pass n=2
+        client.generate([], n=2)
+
+        client._async_client.generate.assert_awaited_once()
+        call_args = client._async_client.generate.call_args
+        assert call_args.kwargs["n"] == 2
 
 
 def test_missing_api_key_raises_error() -> None:
     # Ensure environment is clean
     with patch.dict(os.environ, {}, clear=True):
+        # OpenAIClient init calls OpenAIClientAsync init, which checks env var
         with pytest.raises(OpenAIError):
             OpenAIClient()

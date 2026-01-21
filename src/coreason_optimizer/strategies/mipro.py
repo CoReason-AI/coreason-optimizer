@@ -16,160 +16,144 @@ and few-shot example selection to find the optimal prompt configuration.
 """
 
 import uuid
+from typing import Any, Callable, cast
 
-from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
-from coreason_optimizer.core.client import (
-    BudgetAwareEmbeddingProvider,
-    BudgetAwareLLMClient,
+import anyio
+
+from coreason_optimizer.core.async_client import (
+    BudgetAwareEmbeddingProviderAsync,
+    BudgetAwareLLMClientAsync,
 )
+from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.interfaces import (
     Construct,
     EmbeddingProvider,
+    EmbeddingProviderAsync,
     LLMClient,
+    LLMClientAsync,
     Metric,
     PromptOptimizer,
+    PromptOptimizerAsync,
 )
 from coreason_optimizer.core.models import OptimizedManifest, TrainingExample
 from coreason_optimizer.data.loader import Dataset
-from coreason_optimizer.strategies.mutator import LLMInstructionMutator
-from coreason_optimizer.strategies.selector import (
-    BaseSelector,
-    RandomSelector,
-    SemanticSelector,
+from coreason_optimizer.strategies.mutator import (
+    LLMInstructionMutatorAsync,
 )
+from coreason_optimizer.strategies.selector import (
+    BaseSelectorAsync,
+    RandomSelectorAsync,
+    SemanticSelectorAsync,
+)
+from coreason_optimizer.utils.adapters import SyncToAsyncEmbeddingProviderAdapter, SyncToAsyncLLMClientAdapter
+from coreason_optimizer.utils.helpers import unwrap_exception_group
 from coreason_optimizer.utils.logger import logger
 
 
-class MiproOptimizer(PromptOptimizer):
+class MiproOptimizerAsync(PromptOptimizerAsync):
     """
-    MIPRO (Multi-prompt Instruction PRoposal Optimizer) Strategy.
-
-    This strategy:
-    1. Generates N candidate system instructions using a mutator (Meta-LLM).
-    2. Generates M candidate few-shot example sets using a selector.
-    3. Performs a grid search over all (Instruction, ExampleSet) combinations.
-    4. Selects the combination with the highest score on the training set.
+    Async MIPRO Strategy.
     """
 
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_client: LLMClientAsync,
         metric: Metric,
         config: OptimizerConfig,
-        embedding_provider: EmbeddingProvider | None = None,
+        embedding_provider: EmbeddingProviderAsync | None = None,
         num_instruction_candidates: int = 10,
         num_fewshot_combinations: int = 5,
     ):
-        """
-        Initialize the MIPRO Optimizer.
-
-        Args:
-            llm_client: The LLM client for generation.
-            metric: The metric for evaluation.
-            config: Optimization configuration.
-            embedding_provider: Optional provider for semantic selection.
-            num_instruction_candidates: Number of instruction variations to generate.
-            num_fewshot_combinations: Number of few-shot sets to sample.
-
-        Raises:
-            ValueError: If semantic selection is requested but no embedding provider is given.
-        """
         self.metric = metric
         self.config = config
         self.num_instruction_candidates = num_instruction_candidates
         self.num_fewshot_combinations = num_fewshot_combinations
 
-        # Wrap client with Budget Awareness
         self.budget_manager = BudgetManager(config.budget_limit_usd)
-        self.llm_client = BudgetAwareLLMClient(llm_client, self.budget_manager)
+        self.llm_client = BudgetAwareLLMClientAsync(llm_client, self.budget_manager)
 
-        # Initialize components
-        self.mutator = LLMInstructionMutator(self.llm_client, config)
+        self.mutator = LLMInstructionMutatorAsync(self.llm_client, config)
 
-        self.selector: BaseSelector
+        self.selector: BaseSelectorAsync
         if config.selector_type == "semantic":
             if not embedding_provider:
                 raise ValueError("Embedding provider is required for semantic selection.")
 
-            # Wrap embedding provider sharing the SAME budget manager
-            wrapped_embedder = BudgetAwareEmbeddingProvider(embedding_provider, self.budget_manager)
-            self.selector = SemanticSelector(wrapped_embedder, seed=42, embedding_model=config.embedding_model)
+            wrapped_embedder = BudgetAwareEmbeddingProviderAsync(embedding_provider, self.budget_manager)
+            self.selector = SemanticSelectorAsync(wrapped_embedder, seed=42, embedding_model=config.embedding_model)
         else:
-            self.selector = RandomSelector(seed=42)
+            self.selector = RandomSelectorAsync(seed=42)
 
-    def _evaluate_candidate(
+    async def _evaluate_candidate(
         self,
         instruction: str,
         examples: list[TrainingExample],
         dataset: list[TrainingExample],
     ) -> float:
-        """Evaluate a single candidate (instruction + examples) on a dataset."""
-        total_score = 0.0
-        for example in dataset:
-            prompt = format_prompt(instruction, examples, example.inputs)
-            try:
-                response = self.llm_client.generate(
-                    messages=[{"role": "user", "content": prompt}],
-                    model=self.config.target_model,
-                    temperature=0.0,
-                )
-                score = self.metric(response.content, example.reference)
-                total_score += score
-            except BudgetExceededError:
-                raise
-            except Exception as e:
-                logger.warning(f"Error during evaluation: {e}")
-                pass
+        # Parallel evaluation using task group
+        scores: list[float] = []
+        # Reuse semaphoe logic? Or let anyio manage tasks?
+        # A semaphore would be good to limit concurrency here too.
+        # Assuming we can define a semaphore for this instance or method.
+        sem = anyio.Semaphore(10)  # Higher limit for evaluation?
 
-        return total_score / len(dataset) if dataset else 0.0
+        async def _eval_one(example: TrainingExample) -> float:
+            async with sem:
+                prompt = format_prompt(instruction, examples, example.inputs)
+                try:
+                    response = await self.llm_client.generate(
+                        messages=[{"role": "user", "content": prompt}],
+                        model=self.config.target_model,
+                        temperature=0.0,
+                    )
+                    return self.metric(response.content, example.reference)
+                except BudgetExceededError:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Error during evaluation: {e}")
+                    return 0.0
 
-    def compile(
+        async with anyio.create_task_group() as tg:
+            for example in dataset:
+                tg.start_soon(lambda ex: self._wrapper_eval(ex, scores, _eval_one), example)
+
+        return sum(scores) / len(dataset) if dataset else 0.0
+
+    async def _wrapper_eval(
+        self, example: TrainingExample, score_list: list[float], func: Callable[[TrainingExample], Any]
+    ) -> None:
+        score = await func(example)
+        score_list.append(score)
+
+    async def compile(
         self,
         agent: Construct,
         trainset: list[TrainingExample],
         valset: list[TrainingExample],
     ) -> OptimizedManifest:
-        """
-        Run the MIPRO optimization loop.
-
-        Args:
-            agent: The agent construct.
-            trainset: Training data.
-            valset: Validation data.
-
-        Returns:
-            OptimizedManifest with best instruction and examples.
-
-        Raises:
-            BudgetExceededError: If budget is exceeded.
-        """
         logger.info(
-            "Starting MIPRO compilation",
+            "Starting MIPRO compilation (Async)",
             train_size=len(trainset),
             target_model=self.config.target_model,
         )
 
-        # 1. Diagnosis: Run baseline to find failures
+        # 1. Diagnosis
         logger.info("Running baseline diagnosis...")
         dataset_obj = Dataset(trainset)
         failed_examples = []
 
-        # We need to run at least once to get failures.
-        # We use the original instruction and NO examples (or random examples?) for diagnosis.
-        # Let's use 0-shot with original instruction.
         for example in trainset:
             prompt = format_prompt(agent.system_prompt, [], example.inputs)
             try:
-                response = self.llm_client.generate(
+                response = await self.llm_client.generate(
                     messages=[{"role": "user", "content": prompt}],
                     model=self.config.target_model,
                     temperature=0.0,
                 )
                 score = self.metric(response.content, example.reference)
-                if score < 1.0:  # Assuming < 1.0 is failure/imperfect
-                    # We store the *prediction* in metadata for the mutator
+                if score < 1.0:
                     example.metadata["prediction"] = response.content
                     failed_examples.append(example)
             except BudgetExceededError:
@@ -180,12 +164,12 @@ class MiproOptimizer(PromptOptimizer):
         logger.info(f"Diagnosis complete. Found {len(failed_examples)} failures.")
 
         # 2. Candidate Generation: Instructions
-        instruction_candidates = {agent.system_prompt}  # Use set to avoid duplicates
+        instruction_candidates = {agent.system_prompt}
         logger.info(f"Generating {self.num_instruction_candidates} instruction candidates...")
 
         for i in range(self.num_instruction_candidates):
             try:
-                new_instruction = self.mutator.mutate(
+                new_instruction = await self.mutator.mutate(
                     current_instruction=agent.system_prompt,
                     failed_examples=failed_examples,
                 )
@@ -200,14 +184,12 @@ class MiproOptimizer(PromptOptimizer):
 
         # 3. Candidate Generation: Example Sets
         example_sets: list[list[TrainingExample]] = []
-        # Always include 0-shot
         example_sets.append([])
 
         logger.info(f"Generating {self.num_fewshot_combinations} few-shot sets...")
         for _ in range(self.num_fewshot_combinations):
-            # Randomly select k examples (using max_bootstrapped_demos from config)
             k = self.config.max_bootstrapped_demos
-            selected = self.selector.select(dataset_obj, k=k)
+            selected = await self.selector.select(dataset_obj, k=k)
             example_sets.append(selected)
 
         # 4. Grid Search
@@ -222,11 +204,7 @@ class MiproOptimizer(PromptOptimizer):
 
         for instr in instruction_list:
             for ex_set in example_sets:
-                # Evaluate on Trainset (Optimization Objective)
-                # In production, we might want to evaluate on a held-out 'dev' split of trainset
-                # to avoid overfitting, but for now we use the provided trainset.
-                score = self._evaluate_candidate(instr, ex_set, trainset)
-
+                score = await self._evaluate_candidate(instr, ex_set, trainset)
                 logger.debug(f"Candidate Score: {score:.4f}")
 
                 if score > best_score:
@@ -236,16 +214,13 @@ class MiproOptimizer(PromptOptimizer):
 
         logger.info(f"Grid Search complete. Best Training Score: {best_score}")
 
-        # 5. Final Evaluation on Validation Set
-        # If valset is provided, we compute the 'performance_metric' on it.
-        # Otherwise we use the best training score.
+        # 5. Final Evaluation
         final_metric = best_score
         if valset:
             logger.info("Evaluating best candidate on Validation Set...")
-            final_metric = self._evaluate_candidate(best_instruction, best_examples, valset)
+            final_metric = await self._evaluate_candidate(best_instruction, best_examples, valset)
             logger.info(f"Validation Score: {final_metric}")
 
-        # 6. Create Manifest
         return OptimizedManifest(
             agent_id="unknown_agent",
             base_model=self.config.target_model,
@@ -254,3 +229,54 @@ class MiproOptimizer(PromptOptimizer):
             performance_metric=final_metric,
             optimization_run_id=f"opt_mipro_{uuid.uuid4().hex[:8]}",
         )
+
+
+class MiproOptimizer(PromptOptimizer):
+    """
+    Sync Facade for MiproOptimizerAsync.
+    """
+
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        metric: Metric,
+        config: OptimizerConfig,
+        embedding_provider: EmbeddingProvider | None = None,
+        num_instruction_candidates: int = 10,
+        num_fewshot_combinations: int = 5,
+    ):
+        if hasattr(llm_client, "_async_client"):
+            async_client = llm_client._async_client
+        else:
+            async_client = SyncToAsyncLLMClientAdapter(llm_client)
+
+        async_embedding_provider = None
+        if embedding_provider:
+            if hasattr(embedding_provider, "_async_client"):
+                async_embedding_provider = embedding_provider._async_client
+            else:
+                async_embedding_provider = SyncToAsyncEmbeddingProviderAdapter(embedding_provider)
+
+        self._async = MiproOptimizerAsync(
+            async_client,
+            metric,
+            config,
+            async_embedding_provider,
+            num_instruction_candidates,
+            num_fewshot_combinations,
+        )
+
+    def compile(
+        self,
+        agent: Construct,
+        trainset: list[TrainingExample],
+        valset: list[TrainingExample],
+    ) -> OptimizedManifest:
+        try:
+
+            async def _run() -> OptimizedManifest:
+                return await self._async.compile(agent, trainset, valset)
+
+            return cast(OptimizedManifest, anyio.run(_run))
+        except Exception as e:
+            raise unwrap_exception_group(e) from e

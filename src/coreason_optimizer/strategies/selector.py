@@ -18,11 +18,16 @@ as few-shot demonstrations, using either random sampling or semantic clustering.
 import json
 import random
 from abc import ABC, abstractmethod
+from typing import Any
 
+import anyio
 import numpy as np
 from sklearn.cluster import KMeans
 
-from coreason_optimizer.core.interfaces import EmbeddingProvider
+from coreason_optimizer.core.interfaces import (
+    EmbeddingProvider,
+    EmbeddingProviderAsync,
+)
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
 
@@ -43,6 +48,32 @@ class BaseSelector(ABC):
             A list of selected TrainingExample objects.
         """
         pass  # pragma: no cover
+
+
+class BaseSelectorAsync(ABC):
+    """Abstract base class for async few-shot example selection strategies."""
+
+    @abstractmethod
+    async def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
+        """
+        Select k examples from the training set asynchronously.
+        """
+        pass  # pragma: no cover
+
+
+class RandomSelectorAsync(BaseSelectorAsync):
+    """Randomly selects examples from the training set (Async)."""
+
+    def __init__(self, seed: int = 42):
+        self.seed = seed
+
+    async def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
+        if len(trainset) <= k:
+            return list(trainset)
+
+        # CPU bound, but fast. Can just run.
+        rng = random.Random(self.seed)
+        return rng.sample(list(trainset), k)
 
 
 class RandomSelector(BaseSelector):
@@ -75,14 +106,78 @@ class RandomSelector(BaseSelector):
         return rng.sample(list(trainset), k)
 
 
+class SemanticSelectorAsync(BaseSelectorAsync):
+    """
+    Selects diverse examples using K-Means clustering on embeddings (Async).
+    """
+
+    def __init__(
+        self,
+        embedding_provider: EmbeddingProviderAsync,
+        seed: int = 42,
+        embedding_model: str | None = None,
+    ):
+        self.embedding_provider = embedding_provider
+        self.seed = seed
+        self.embedding_model = embedding_model
+
+    async def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
+        if len(trainset) <= k:
+            return list(trainset)
+
+        # 1. Prepare texts for embedding
+        texts = []
+        for ex in trainset:
+            # Use JSON serialization for robustness
+            text = json.dumps(ex.inputs, sort_keys=True)
+            texts.append(text)
+
+        # 2. Get embeddings
+        response = await self.embedding_provider.embed(texts, model=self.embedding_model)
+        X = np.array(response.embeddings)
+
+        # 3. K-Means Clustering
+        # CPU heavy - wrap in thread
+        def _cluster() -> Any:
+            # n_init="auto" is default in newer sklearn, explicit for safety
+            kmeans = KMeans(n_clusters=k, random_state=self.seed, n_init=10)
+            kmeans.fit(X)
+
+            # 4. Select representatives (closest to centroid)
+            selected_indices = []
+            for i in range(k):
+                centroid = kmeans.cluster_centers_[i]
+                cluster_indices = np.where(kmeans.labels_ == i)[0]
+                if len(cluster_indices) == 0:
+                    continue
+                cluster_points = X[cluster_indices]
+                distances = np.linalg.norm(cluster_points - centroid, axis=1)
+                closest_idx_in_cluster = np.argmin(distances)
+                original_idx = cluster_indices[closest_idx_in_cluster]
+                selected_indices.append(original_idx)
+            return selected_indices
+
+        selected_indices = await anyio.to_thread.run_sync(_cluster)
+
+        # Handle potential duplicates or fewer points
+        selected_indices = sorted(list(set(selected_indices)))
+
+        # Fill if needed
+        if len(selected_indices) < k:
+            remaining_indices = [idx for idx in range(len(trainset)) if idx not in selected_indices]
+            rng = random.Random(self.seed)
+            needed = k - len(selected_indices)
+            if remaining_indices:
+                extra = rng.sample(remaining_indices, min(len(remaining_indices), needed))
+                selected_indices.extend(extra)
+                selected_indices.sort()
+
+        return [trainset[idx] for idx in selected_indices]
+
+
 class SemanticSelector(BaseSelector):
     """
     Selects diverse examples using K-Means clustering on embeddings.
-
-    Logic:
-    1. Embed all examples.
-    2. Cluster into k clusters.
-    3. Select the example closest to the centroid of each cluster.
     """
 
     def __init__(

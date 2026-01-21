@@ -66,20 +66,25 @@ def test_wrapper_raises_budget_exceeded() -> None:
 
 def test_wrapper_passes_args() -> None:
     """Test that arguments are passed to inner client."""
-    mock_inner = MagicMock()
+    # Use spec=LLMClient to strictly define attributes, preventing auto-creation of _async_client
+    mock_inner = MagicMock(spec=LLMClient)
     mock_inner.generate.return_value = LLMResponse(content="", usage=UsageStats())
 
     budget = BudgetManager(10.0)
+    # BudgetAwareLLMClient wraps generic client with Adapter because _async_client is missing
     wrapper = BudgetAwareLLMClient(mock_inner, budget)
 
-    wrapper.generate(messages=[{"a": "b"}], model="gpt-test", temperature=0.7, extra="val")
+    # Adapter calls SyncToAsyncLLMClientAdapter.generate which calls sync generate
+    # Note: messages is passed positionally by the adapter
+    messages = [{"a": "b"}]
+    wrapper.generate(messages=messages, model="gpt-test", temperature=0.7, extra="val")
 
-    mock_inner.generate.assert_called_once_with(messages=[{"a": "b"}], model="gpt-test", temperature=0.7, extra="val")
+    mock_inner.generate.assert_called_once_with(messages, model="gpt-test", temperature=0.7, extra="val")
 
 
 def test_wrapper_blocks_call_if_already_exceeded() -> None:
     """Test that generate is blocked if budget is already exceeded."""
-    mock_inner = MagicMock()
+    mock_inner = MagicMock(spec=LLMClient)
     budget = BudgetManager(5.0)
     wrapper = BudgetAwareLLMClient(mock_inner, budget)
 

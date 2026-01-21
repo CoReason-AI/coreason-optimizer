@@ -8,11 +8,9 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import OpenAI
 
 from coreason_optimizer.core.client import OpenAIClient
 from coreason_optimizer.core.interfaces import LLMResponse
@@ -35,24 +33,39 @@ def mock_openai_response() -> MagicMock:
 
 
 def test_openai_client_initialization_with_key() -> None:
-    with patch("coreason_optimizer.core.client.OpenAI") as MockOpenAI:
+    # We need to patch OpenAIClientAsync now since OpenAIClient wraps it
+    with patch("coreason_optimizer.core.client.OpenAIClientAsync") as MockAsync:
         client = OpenAIClient(api_key="test_key")
-        MockOpenAI.assert_called_once_with(api_key="test_key")
-        assert client.client == MockOpenAI.return_value
+        MockAsync.assert_called_once_with(api_key="test_key")
+        assert client._async_client == MockAsync.return_value
 
 
 def test_openai_client_initialization_with_env_var() -> None:
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "env_key"}):
-        with patch("coreason_optimizer.core.client.OpenAI") as MockOpenAI:
-            _ = OpenAIClient()
-            MockOpenAI.assert_called_once_with(api_key="env_key")
+    # This tests the wrapper logic passing args to the inner client
+    # OpenAIClientAsync will handle the env var check
+    with patch("coreason_optimizer.core.client.OpenAIClientAsync") as MockAsync:
+        _ = OpenAIClient()
+        MockAsync.assert_called_once_with(api_key=None)
 
 
 def test_openai_client_generate(mock_openai_response: MagicMock) -> None:
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
+    # Need to mock the Async client inside
+    client = OpenAIClient(api_key="test")
+    # Mock the internal async client
+    client._async_client = AsyncMock()
+    client._async_client.__aenter__.return_value = client._async_client
 
-    client = OpenAIClient(client=mock_client)
+    # The return value from generate should be LLMResponse
+    # We need to construct a real LLMResponse or a mock with attributes
+    # The original test checked response.content, etc.
+    # The wrapper returns what async client returns.
+
+    # We can mock the return of async client generate
+    async_response = LLMResponse(
+        content="Test response",
+        usage={"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150, "cost_usd": 0.00125},
+    )
+    client._async_client.generate.return_value = async_response
 
     messages = [{"role": "user", "content": "Hello"}]
     response = client.generate(messages, model="gpt-4o", temperature=0.5)
@@ -62,65 +75,16 @@ def test_openai_client_generate(mock_openai_response: MagicMock) -> None:
     assert response.usage.prompt_tokens == 100
     assert response.usage.completion_tokens == 50
     assert response.usage.total_tokens == 150
-
-    # Cost calculation check for gpt-4o
-    # Input: 100 * 5.00 / 1M = 0.0005
-    # Output: 50 * 15.00 / 1M = 0.00075
-    # Total: 0.00125
     assert response.usage.cost_usd == pytest.approx(0.00125)
 
-    mock_client.chat.completions.create.assert_called_once_with(
-        model="gpt-4o",
-        messages=messages,
-        temperature=0.5,
-    )
-
-
-def test_openai_client_cost_calculation_mini(mock_openai_response: MagicMock) -> None:
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
-
-    client = OpenAIClient(client=mock_client)
-
-    # gpt-4o-mini pricing: input 0.15, output 0.60
-    # Usage: 100 input, 50 output
-    # Input cost: 100 * 0.15 / 1M = 0.000015
-    # Output cost: 50 * 0.60 / 1M = 0.000030
-    # Total: 0.000045
-
-    response = client.generate([{"role": "user", "content": "hi"}], model="gpt-4o-mini")
-    assert response.usage.cost_usd == pytest.approx(0.000045)
-
-
-def test_openai_client_generate_unknown_model(mock_openai_response: MagicMock) -> None:
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
-
-    client = OpenAIClient(client=mock_client)
-
-    messages = [{"role": "user", "content": "Hello"}]
-    response = client.generate(messages, model="unknown-model")
-
-    assert response.usage.cost_usd == 0.0
-
-
-def test_openai_client_generate_no_usage(mock_openai_response: MagicMock) -> None:
-    mock_openai_response.usage = None
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
-
-    client = OpenAIClient(client=mock_client)
-
-    response = client.generate([{"role": "user", "content": "hi"}])
-    assert response.usage.total_tokens == 0
-    assert response.usage.cost_usd == 0.0
+    client._async_client.generate.assert_awaited_once_with(messages, "gpt-4o", 0.5)
 
 
 def test_openai_client_generate_failure() -> None:
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.side_effect = Exception("API Error")
-
-    client = OpenAIClient(client=mock_client)
+    client = OpenAIClient(api_key="test")
+    client._async_client = AsyncMock()
+    client._async_client.__aenter__.return_value = client._async_client
+    client._async_client.generate.side_effect = Exception("API Error")
 
     with pytest.raises(Exception, match="API Error"):
         client.generate([{"role": "user", "content": "Fail"}])

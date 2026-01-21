@@ -16,7 +16,7 @@ used throughout the library, ensuring loose coupling and type safety.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Awaitable, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -114,6 +114,32 @@ class LLMClient(Protocol):
 
 
 @runtime_checkable
+class LLMClientAsync(Protocol):
+    """Protocol for a generic Async LLM client."""
+
+    def generate(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> Awaitable[LLMResponse]:
+        """
+        Generate a response from the LLM asynchronously.
+
+        Args:
+            messages: A list of message dictionaries (role, content).
+            model: The model identifier to use.
+            temperature: Sampling temperature.
+            **kwargs: Additional provider-specific arguments.
+
+        Returns:
+            Awaitable LLMResponse containing content and usage stats.
+        """
+        ...  # pragma: no cover
+
+
+@runtime_checkable
 class Metric(Protocol):
     """Protocol for a scoring function."""
 
@@ -150,6 +176,24 @@ class EmbeddingProvider(Protocol):
         ...  # pragma: no cover
 
 
+@runtime_checkable
+class EmbeddingProviderAsync(Protocol):
+    """Protocol for an async embedding provider."""
+
+    def embed(self, texts: list[str], model: str | None = None) -> Awaitable[EmbeddingResponse]:
+        """
+        Generate embeddings for a list of texts asynchronously.
+
+        Args:
+            texts: List of strings to embed.
+            model: The embedding model to use.
+
+        Returns:
+            Awaitable EmbeddingResponse containing vectors and usage stats.
+        """
+        ...  # pragma: no cover
+
+
 class PromptOptimizer(ABC):
     """Abstract base class for prompt optimization strategies."""
 
@@ -162,6 +206,30 @@ class PromptOptimizer(ABC):
     ) -> Any:
         """
         Run the optimization loop to produce an optimized manifest.
+
+        Args:
+            agent: The draft agent to optimize.
+            trainset: List of examples for training/bootstrapping.
+            valset: List of examples for validation/evaluation.
+
+        Returns:
+            An optimized manifest object (specific type depends on implementation).
+        """
+        pass  # pragma: no cover
+
+
+class PromptOptimizerAsync(ABC):
+    """Abstract base class for async prompt optimization strategies."""
+
+    @abstractmethod
+    async def compile(
+        self,
+        agent: Construct,
+        trainset: list[TrainingExample],
+        valset: list[TrainingExample],
+    ) -> Any:
+        """
+        Run the optimization loop to produce an optimized manifest asynchronously.
 
         Args:
             agent: The draft agent to optimize.

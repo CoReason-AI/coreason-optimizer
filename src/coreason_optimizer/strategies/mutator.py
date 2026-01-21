@@ -22,7 +22,7 @@ from jinja2 import Template
 
 from coreason_optimizer.core.budget import BudgetExceededError
 from coreason_optimizer.core.config import OptimizerConfig
-from coreason_optimizer.core.interfaces import LLMClient
+from coreason_optimizer.core.interfaces import LLMClient, LLMClientAsync
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.utils.logger import logger
 
@@ -49,6 +49,21 @@ META_PROMPT_TEMPLATE = (
     "Analyze the examples and the current instruction. Propose a NEW system instruction that would correctly handle "
     "these examples. Return ONLY the new instruction text, without explanation or markdown formatting."
 )
+
+
+class BaseMutatorAsync(ABC):
+    """Abstract base class for async instruction mutation strategies."""
+
+    def __init__(self, llm_client: LLMClientAsync):
+        self.llm_client = llm_client
+
+    @abstractmethod
+    async def mutate(
+        self,
+        current_instruction: str,
+        failed_examples: list[TrainingExample] | None = None,
+    ) -> str:
+        pass
 
 
 class BaseMutator(ABC):
@@ -82,6 +97,17 @@ class BaseMutator(ABC):
         pass  # pragma: no cover
 
 
+class IdentityMutatorAsync(BaseMutatorAsync):
+    """A mutator that returns the instruction unchanged."""
+
+    async def mutate(
+        self,
+        current_instruction: str,
+        failed_examples: list[TrainingExample] | None = None,
+    ) -> str:
+        return current_instruction
+
+
 class IdentityMutator(BaseMutator):
     """A mutator that returns the instruction unchanged. Useful for baselines."""
 
@@ -90,21 +116,81 @@ class IdentityMutator(BaseMutator):
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
     ) -> str:
-        """
-        Return the instruction as-is.
-
-        Args:
-            current_instruction: The instruction.
-            failed_examples: Ignored.
-
-        Returns:
-            The same instruction.
-        """
         return current_instruction
 
 
+class LLMInstructionMutatorAsync(BaseMutatorAsync):
+    """Async Mutates instructions using a Meta-LLM."""
+
+    def __init__(self, llm_client: LLMClientAsync, config: OptimizerConfig):
+        super().__init__(llm_client)
+        self.config = config
+
+    async def mutate(
+        self,
+        current_instruction: str,
+        failed_examples: list[TrainingExample] | None = None,
+    ) -> str:
+        if not failed_examples:
+            logger.warning("No failed examples provided for mutation. Returning original instruction.")
+            return current_instruction
+
+        meta_prompt = self._build_meta_prompt(current_instruction, failed_examples)
+
+        try:
+            logger.info("Requesting instruction mutation from Meta-LLM.")
+            response = await self.llm_client.generate(
+                messages=[{"role": "user", "content": meta_prompt}],
+                model=self.config.meta_model,
+                temperature=0.7,
+            )
+            new_instruction = response.content.strip()
+            # Basic cleanup
+            if new_instruction.startswith("```") and new_instruction.endswith("```"):
+                lines = new_instruction.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                new_instruction = "\n".join(lines).strip()
+
+            if not new_instruction:
+                logger.warning("Meta-LLM returned empty instruction. Returning original.")
+                return current_instruction
+
+            return new_instruction
+        except BudgetExceededError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to mutate instruction: {e}")
+            return current_instruction
+
+    def _build_meta_prompt(self, instruction: str, failures: list[TrainingExample]) -> str:
+        display_failures = failures[:10]
+        failures_hidden_count = len(failures) - len(display_failures)
+
+        formatted_failures = []
+        for ex in display_failures:
+            formatted_failures.append(
+                {
+                    "inputs": json.dumps(ex.inputs, indent=2),
+                    "reference": str(ex.reference),
+                    "prediction": str(ex.metadata.get("prediction", "N/A")),
+                }
+            )
+
+        template = Template(META_PROMPT_TEMPLATE)
+        return str(
+            template.render(
+                instruction=instruction,
+                failures=formatted_failures,
+                failures_hidden_count=failures_hidden_count,
+            )
+        )
+
+
 class LLMInstructionMutator(BaseMutator):
-    """Mutates instructions using a Meta-LLM to address failures."""
+    """Mutates instructions using a Meta-LLM to address failures (Sync)."""
 
     def __init__(self, llm_client: LLMClient, config: OptimizerConfig):
         """
@@ -122,16 +208,6 @@ class LLMInstructionMutator(BaseMutator):
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
     ) -> str:
-        """
-        Generate a new instruction by asking the Meta-LLM to analyze failures.
-
-        Args:
-            current_instruction: The current instruction.
-            failed_examples: List of TrainingExample where the current instruction failed.
-
-        Returns:
-            A new, potentially improved instruction string.
-        """
         if not failed_examples:
             logger.warning("No failed examples provided for mutation. Returning original instruction.")
             return current_instruction

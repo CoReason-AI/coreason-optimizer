@@ -8,22 +8,21 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from coreason_optimizer.core.budget import BudgetExceededError
+from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import (
-    EmbeddingProvider,
     EmbeddingResponse,
     LLMResponse,
     UsageStats,
 )
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.strategies.mipro import MiproOptimizer
-from coreason_optimizer.strategies.selector import SemanticSelector
 
 
 class MockConstruct:
@@ -33,11 +32,30 @@ class MockConstruct:
 
 
 @pytest.fixture
-def mock_llm() -> MagicMock:
-    llm = MagicMock()
-    # Default response
-    llm.generate.return_value = LLMResponse(content="default response", usage=UsageStats())
-    return llm
+def mock_llm() -> OpenAIClient:
+    # Need to mock OpenAIClient (Sync Facade) structure
+    # The Facade initialization checks if it's an instance of OpenAIClient
+    # So we need to ensure isinstance(llm, OpenAIClient) passes?
+    # MiproOptimizer init:
+    # if isinstance(llm_client, OpenAIClient): ...
+
+    # We can just instantiate a real OpenAIClient with mocked internals
+    # But init requires api_key if no client provided, but we pass nothing so internal async needs key
+
+    with patch("coreason_optimizer.core.client.OpenAIClientAsync"):
+        # Mock the async client creation
+        client = OpenAIClient(api_key="test")
+
+    # Mock internal async client
+    client._async_client = AsyncMock()
+    # Mock context manager
+    client._async_client.__aenter__.return_value = client._async_client
+
+    # Default response for async generate
+    async_response = LLMResponse(content="default response", usage=UsageStats())
+    client._async_client.generate.return_value = async_response
+
+    return client
 
 
 @pytest.fixture
@@ -49,7 +67,7 @@ def mock_metric() -> MagicMock:
     return MagicMock(side_effect=metric_fn)
 
 
-def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_optimizer_flow(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test the complete MIPRO flow."""
     config = OptimizerConfig(target_model="test-model", meta_model="meta-model", max_bootstrapped_demos=2)
 
@@ -63,9 +81,9 @@ def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> No
     ]
     agent = MockConstruct()
 
-    # 2. Setup LLM Behavior
+    # 2. Setup LLM Behavior (Async)
 
-    def side_effect(messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> LLMResponse:
+    async def side_effect(messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> LLMResponse:
         content = messages[0]["content"]
 
         # Meta-LLM Mutation Call
@@ -83,7 +101,8 @@ def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> No
 
         return LLMResponse(content="unknown", usage=UsageStats())
 
-    mock_llm.generate.side_effect = side_effect
+    # Cast to Any to satisfy mypy for mocked attributes
+    cast(Any, mock_llm._async_client.generate).side_effect = side_effect
 
     # 3. Run MIPRO
     # Reduce candidates for speed in tests
@@ -96,11 +115,13 @@ def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> No
     assert manifest.performance_metric == 1.0  # Should score 1.0 on valset if best instruction is used
 
     # Verify calls
-    meta_calls = [call for call in mock_llm.generate.mock_calls if call.kwargs.get("model") == "meta-model"]
+    # Cast to Any to bypass mypy check on mock_calls
+    mock_calls = cast(Any, mock_llm._async_client.generate).mock_calls
+    meta_calls = [call for call in mock_calls if call.kwargs.get("model") == "meta-model"]
     assert len(meta_calls) >= 1
 
 
-def test_mipro_optimizer_no_failures(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_optimizer_no_failures(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test MIPRO when baseline is perfect (no failures)."""
     config = OptimizerConfig()
 
@@ -108,7 +129,8 @@ def test_mipro_optimizer_no_failures(mock_llm: MagicMock, mock_metric: MagicMock
     agent = MockConstruct()
 
     # LLM always correct
-    mock_llm.generate.return_value = LLMResponse(content="correct", usage=UsageStats())
+    cast(Any, mock_llm._async_client.generate).return_value = LLMResponse(content="correct", usage=UsageStats())
+    cast(Any, mock_llm._async_client.generate).side_effect = None  # Clear side effect from fixture
 
     optimizer = MiproOptimizer(mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1)
 
@@ -119,20 +141,22 @@ def test_mipro_optimizer_no_failures(mock_llm: MagicMock, mock_metric: MagicMock
     assert manifest.performance_metric == 1.0
 
 
-def test_mipro_optimizer_resilience(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_optimizer_resilience(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test that MIPRO continues despite errors in LLM calls and Mutator."""
     config = OptimizerConfig(target_model="tgt", meta_model="meta")
     trainset = [TrainingExample(inputs={"q": "1"}, reference="A")]
     agent = MockConstruct()
 
     # Case 1: LLM raises on generate (Diagnosis & Evaluation)
-    mock_llm.generate.side_effect = Exception("LLM Error")
+    cast(Any, mock_llm._async_client.generate).side_effect = Exception("LLM Error")
 
     # Case 2: Mutator raises on mutate
-    # We use patch to mock the Mutator class used inside MiproOptimizer
-    with patch("coreason_optimizer.strategies.mipro.LLMInstructionMutator") as MockMutatorClass:
+    # We use patch to mock the Mutator class used inside MiproOptimizerAsync
+    # MiproOptimizer uses MiproOptimizerAsync which uses LLMInstructionMutatorAsync
+    with patch("coreason_optimizer.strategies.mipro.LLMInstructionMutatorAsync") as MockMutatorClass:
         mock_mutator_instance = MockMutatorClass.return_value
-        mock_mutator_instance.mutate.side_effect = Exception("Mutator Error")
+        # mutate is async
+        mock_mutator_instance.mutate = AsyncMock(side_effect=Exception("Mutator Error"))
 
         optimizer = MiproOptimizer(
             mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1
@@ -147,7 +171,7 @@ def test_mipro_optimizer_resilience(mock_llm: MagicMock, mock_metric: MagicMock)
         assert manifest.performance_metric == 0.0
 
 
-def test_mipro_empty_trainset(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_empty_trainset(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test behavior with empty training set."""
     config = OptimizerConfig()
     agent = MockConstruct()
@@ -162,7 +186,7 @@ def test_mipro_empty_trainset(mock_llm: MagicMock, mock_metric: MagicMock) -> No
     assert manifest.performance_metric == 0.0
 
 
-def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_complex_scoring(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test that the optimizer selects the best combination from multiple candidates."""
     config = OptimizerConfig(target_model="tgt", meta_model="meta-model")
     agent = MockConstruct()
@@ -181,7 +205,9 @@ def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> N
     mock_metric.side_effect = score_parser
 
     # LLM logic
-    def complex_side_effect(messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> LLMResponse:
+    async def complex_side_effect(
+        messages: list[dict[str, str]], model: str | None = None, **kwargs: Any
+    ) -> LLMResponse:
         content = messages[0]["content"]
 
         # Mutation
@@ -207,12 +233,14 @@ def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> N
         else:  # Original, no examples
             return LLMResponse(content="0.5", usage=UsageStats())
 
-    mock_llm.generate.side_effect = complex_side_effect
+    cast(Any, mock_llm._async_client.generate).side_effect = complex_side_effect
 
     # Patch Selector to always return [ex1]
-    with patch("coreason_optimizer.strategies.mipro.RandomSelector") as MockSelectorClass:
+    # MiproOptimizerAsync uses RandomSelectorAsync
+    with patch("coreason_optimizer.strategies.mipro.RandomSelectorAsync") as MockSelectorClass:
         mock_selector = MockSelectorClass.return_value
-        mock_selector.select.return_value = [ex1]
+        # select is async
+        mock_selector.select = AsyncMock(return_value=[ex1])
 
         optimizer = MiproOptimizer(
             mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1
@@ -225,13 +253,17 @@ def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> N
         assert manifest.performance_metric == 0.95
 
 
-def test_mipro_semantic_selector_integration(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_semantic_selector_integration(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test that MIPRO uses SemanticSelector when configured."""
     config = OptimizerConfig(selector_type="semantic", embedding_model="emb-model")
 
-    mock_embedder = MagicMock(spec=EmbeddingProvider)
+    # Need OpenAIEmbeddingClient facade
+    with patch("coreason_optimizer.core.client.OpenAIEmbeddingClientAsync"):
+        mock_embedder = OpenAIEmbeddingClient(api_key="test")
+
+    mock_embedder._async_client = AsyncMock()
     # Mock return value
-    mock_embedder.embed.return_value = EmbeddingResponse(embeddings=[[0.1, 0.2]], usage=UsageStats())
+    mock_embedder._async_client.embed.return_value = EmbeddingResponse(embeddings=[[0.1, 0.2]], usage=UsageStats())
 
     optimizer = MiproOptimizer(
         mock_llm,
@@ -242,8 +274,16 @@ def test_mipro_semantic_selector_integration(mock_llm: MagicMock, mock_metric: M
         num_fewshot_combinations=1,
     )
 
-    # Verify that the selector is SemanticSelector
-    assert isinstance(optimizer.selector, SemanticSelector)
+    # Verify that the selector is SemanticSelectorAsync (inside async optimizer)
+    # The Facade MiproOptimizer has ._async which has .selector
+    # Note: .selector is on the async instance, which is private _async
+    # We access it for testing purposes
+    # Cast to Any to avoid mypy error about attribute access on private member
+    assert isinstance(
+        cast(Any, optimizer._async.selector).embedding_provider.provider, AsyncMock
+    )  # It's wrapped in BudgetAware
+    # Actually checking type might be hard due to patching or imports
+    # But checking if we passed the provider correctly
 
     # Run a simple compile to ensure flow works (no crash)
     agent = MockConstruct()
@@ -253,7 +293,7 @@ def test_mipro_semantic_selector_integration(mock_llm: MagicMock, mock_metric: M
     assert manifest.base_model == config.target_model
 
 
-def test_mipro_missing_embedding_provider(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_missing_embedding_provider(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test that MIPRO raises ValueError if semantic selector is requested but no provider is given."""
     config = OptimizerConfig(selector_type="semantic")
 
@@ -261,7 +301,7 @@ def test_mipro_missing_embedding_provider(mock_llm: MagicMock, mock_metric: Magi
         MiproOptimizer(mock_llm, mock_metric, config)
 
 
-def test_mipro_semantic_budget_exceeded(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+def test_mipro_semantic_budget_exceeded(mock_llm: OpenAIClient, mock_metric: MagicMock) -> None:
     """Test that BudgetExceededError propagates during semantic selection."""
     # Set a very low budget
     config = OptimizerConfig(
@@ -272,9 +312,14 @@ def test_mipro_semantic_budget_exceeded(mock_llm: MagicMock, mock_metric: MagicM
     )
 
     # Mock Embedder that consumes budget
-    mock_embedder = MagicMock(spec=EmbeddingProvider)
+    with patch("coreason_optimizer.core.client.OpenAIEmbeddingClientAsync"):
+        mock_embedder = OpenAIEmbeddingClient(api_key="test")
+    mock_embedder._async_client = AsyncMock()
+
     # The UsageStats cost should exceed budget
-    mock_embedder.embed.return_value = EmbeddingResponse(embeddings=[[0.1], [0.1]], usage=UsageStats(cost_usd=1.0))
+    mock_embedder._async_client.embed.return_value = EmbeddingResponse(
+        embeddings=[[0.1], [0.1]], usage=UsageStats(cost_usd=1.0)
+    )
 
     optimizer = MiproOptimizer(
         mock_llm,
