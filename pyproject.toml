@@ -16,6 +16,10 @@ openai = "^2.15.0"
 click = "^8.3.1"
 numpy = "^2.4.1"
 scikit-learn = "^1.8.0"
+anyio = "*"
+httpx = "*"
+aiofiles = "*"
+types-aiofiles = "*"
 
 [tool.poetry.scripts]
 coreason-opt = "coreason_optimizer.main:cli"
@@ -74,6 +78,7 @@ disallow_subclassing_any = false
 disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 addopts = "--cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=100"
 testpaths = ["tests"]
 

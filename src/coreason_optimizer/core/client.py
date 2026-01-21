@@ -16,12 +16,16 @@ along with wrappers for budget tracking.
 """
 
 import os
-from typing import Any
+from typing import Any, Optional
 
-from openai import OpenAI
+import anyio
+import httpx
+from openai import AsyncOpenAI
 
 from coreason_optimizer.core.budget import BudgetManager
 from coreason_optimizer.core.interfaces import (
+    AsyncEmbeddingProvider,
+    AsyncLLMClient,
     EmbeddingProvider,
     EmbeddingResponse,
     LLMClient,
@@ -70,23 +74,42 @@ def calculate_openai_cost(model: str, input_tokens: int, output_tokens: int) -> 
     return input_cost + output_cost
 
 
-class OpenAIClient:
-    """Concrete implementation of LLMClient using OpenAI."""
+class OpenAIClientAsync:
+    """Async implementation of LLMClient using OpenAI."""
 
-    def __init__(self, api_key: str | None = None, client: OpenAI | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        client: AsyncOpenAI | None = None,
+        http_client: Optional[httpx.AsyncClient] = None,
+    ):
         """
-        Initialize the OpenAIClient.
+        Initialize the OpenAIClientAsync.
 
         Args:
             api_key: Optional API key. If not provided, reads from OPENAI_API_KEY env var.
-            client: Optional pre-configured OpenAI client instance.
+            client: Optional pre-configured AsyncOpenAI client instance.
+            http_client: Optional httpx.AsyncClient for connection pooling.
         """
+        self._internal_client = http_client is None
+        self._http_client = http_client or httpx.AsyncClient()
+
         if client:
             self.client = client
         else:
-            self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+            self.client = AsyncOpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"), http_client=self._http_client)
 
-    def generate(
+    async def __aenter__(self) -> "OpenAIClientAsync":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self._internal_client:
+            await self._http_client.aclose()
+        # Close the OpenAI client session if needed, but OpenAI client doesn't strictly require
+        # explicit close if we manage the httpx client. However, it's good practice.
+        await self.client.close()
+
+    async def generate(
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
@@ -94,7 +117,7 @@ class OpenAIClient:
         **kwargs: Any,
     ) -> LLMResponse:
         """
-        Generate a response from the OpenAI LLM.
+        Generate a response from the OpenAI LLM asynchronously.
 
         Args:
             messages: A list of message dictionaries (role, content).
@@ -111,10 +134,10 @@ class OpenAIClient:
         model = model or "gpt-4o"
 
         if kwargs.get("stream"):
-            raise ValueError("Streaming is not supported by OpenAIClient.")
+            raise ValueError("Streaming is not supported by OpenAIClientAsync.")
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
@@ -143,21 +166,72 @@ class OpenAIClient:
             raise
 
 
-class BudgetAwareLLMClient:
-    """Wrapper for LLMClient that enforces a budget."""
+class OpenAIClient:
+    """Sync Facade for OpenAIClientAsync."""
 
-    def __init__(self, client: LLMClient, budget_manager: BudgetManager):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        client: AsyncOpenAI | None = None,
+        http_client: Optional[httpx.AsyncClient] = None,
+    ):
         """
-        Initialize the BudgetAwareLLMClient.
+        Initialize the OpenAIClient Facade.
 
         Args:
-            client: The underlying LLMClient to wrap.
+            api_key: Optional API key.
+            client: Optional AsyncOpenAI client.
+            http_client: Optional httpx.AsyncClient.
+        """
+        self._async = OpenAIClientAsync(api_key=api_key, client=client, http_client=http_client)
+
+    def __enter__(self) -> "OpenAIClient":
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        try:
+            anyio.run(self._async.__aexit__, *args)
+        except Exception:
+            # anyio.run might propagate ExceptionGroup if not handled.
+            # actually anyio.run re-raises the exception if one occurred in the coroutine.
+            raise
+
+    def generate(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """
+        Generate a response from the OpenAI LLM (Synchronous Facade).
+        """
+        response: LLMResponse = anyio.run(
+            lambda: self._async.generate(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                **kwargs,
+            )
+        )
+        return response
+
+
+class BudgetAwareLLMClientAsync:
+    """Async Wrapper for AsyncLLMClient that enforces a budget."""
+
+    def __init__(self, client: AsyncLLMClient, budget_manager: BudgetManager):
+        """
+        Initialize the BudgetAwareLLMClientAsync.
+
+        Args:
+            client: The underlying AsyncLLMClient to wrap.
             budget_manager: The BudgetManager to track usage.
         """
         self.client = client
         self.budget_manager = budget_manager
 
-    def generate(
+    async def generate(
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
@@ -182,6 +256,47 @@ class BudgetAwareLLMClient:
         self.budget_manager.check_budget()
 
         # 1. Generate
+        response = await self.client.generate(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            **kwargs,
+        )
+
+        # 2. Track Budget
+        self.budget_manager.consume(response.usage)
+
+        return response
+
+
+class BudgetAwareLLMClient:
+    """Wrapper for LLMClient (Sync) that enforces a budget."""
+
+    def __init__(self, client: LLMClient, budget_manager: BudgetManager):
+        """
+        Initialize the BudgetAwareLLMClient.
+
+        Args:
+            client: The underlying LLMClient to wrap.
+            budget_manager: The BudgetManager to track usage.
+        """
+        self.client = client
+        self.budget_manager = budget_manager
+
+    def generate(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """
+        Generate response and consume budget.
+        """
+        # 0. Check Budget Pre-flight
+        self.budget_manager.check_budget()
+
+        # 1. Generate
         response = self.client.generate(
             messages=messages,
             model=model,
@@ -195,25 +310,42 @@ class BudgetAwareLLMClient:
         return response
 
 
-class OpenAIEmbeddingClient:
-    """Implementation of EmbeddingProvider using OpenAI."""
+class OpenAIEmbeddingClientAsync:
+    """Async Implementation of EmbeddingProvider using OpenAI."""
 
-    def __init__(self, api_key: str | None = None, client: OpenAI | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        client: AsyncOpenAI | None = None,
+        http_client: Optional[httpx.AsyncClient] = None,
+    ):
         """
-        Initialize the OpenAIEmbeddingClient.
+        Initialize the OpenAIEmbeddingClientAsync.
 
         Args:
             api_key: Optional API key. If not provided, reads from OPENAI_API_KEY env var.
-            client: Optional pre-configured OpenAI client instance.
+            client: Optional pre-configured AsyncOpenAI client instance.
+            http_client: Optional httpx.AsyncClient for connection pooling.
         """
+        self._internal_client = http_client is None
+        self._http_client = http_client or httpx.AsyncClient()
+
         if client:
             self.client = client
         else:
-            self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+            self.client = AsyncOpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"), http_client=self._http_client)
 
-    def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+    async def __aenter__(self) -> "OpenAIEmbeddingClientAsync":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self._internal_client:
+            await self._http_client.aclose()
+        await self.client.close()
+
+    async def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
         """
-        Generate embeddings for a list of texts (with batching).
+        Generate embeddings for a list of texts (with batching) asynchronously.
 
         Args:
             texts: List of strings to embed.
@@ -231,7 +363,7 @@ class OpenAIEmbeddingClient:
         try:
             for i in range(0, len(texts), batch_size):
                 batch = texts[i : i + batch_size]
-                response = self.client.embeddings.create(input=batch, model=model)
+                response = await self.client.embeddings.create(input=batch, model=model)
 
                 embeddings = [data.embedding for data in response.data]
                 all_embeddings.extend(embeddings)
@@ -255,8 +387,61 @@ class OpenAIEmbeddingClient:
             raise
 
 
+class OpenAIEmbeddingClient:
+    """Sync Facade for OpenAIEmbeddingClientAsync."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        client: AsyncOpenAI | None = None,
+        http_client: Optional[httpx.AsyncClient] = None,
+    ):
+        self._async = OpenAIEmbeddingClientAsync(api_key=api_key, client=client, http_client=http_client)
+
+    def __enter__(self) -> "OpenAIEmbeddingClient":
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        anyio.run(self._async.__aexit__, *args)
+
+    def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+        response: EmbeddingResponse = anyio.run(lambda: self._async.embed(texts=texts, model=model))
+        return response
+
+
+class BudgetAwareEmbeddingProviderAsync:
+    """Async Wrapper for AsyncEmbeddingProvider that enforces a budget."""
+
+    def __init__(self, provider: AsyncEmbeddingProvider, budget_manager: BudgetManager):
+        """
+        Initialize the BudgetAwareEmbeddingProviderAsync.
+
+        Args:
+            provider: The underlying AsyncEmbeddingProvider to wrap.
+            budget_manager: The BudgetManager to track usage.
+        """
+        self.provider = provider
+        self.budget_manager = budget_manager
+
+    async def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+        """
+        Generate embeddings and consume budget.
+
+        Args:
+            texts: List of strings to embed.
+            model: The embedding model to use.
+
+        Returns:
+            EmbeddingResponse.
+        """
+        self.budget_manager.check_budget()
+        response = await self.provider.embed(texts, model)
+        self.budget_manager.consume(response.usage)
+        return response
+
+
 class BudgetAwareEmbeddingProvider:
-    """Wrapper for EmbeddingProvider that enforces a budget."""
+    """Wrapper for EmbeddingProvider (Sync) that enforces a budget."""
 
     def __init__(self, provider: EmbeddingProvider, budget_manager: BudgetManager):
         """
@@ -272,13 +457,6 @@ class BudgetAwareEmbeddingProvider:
     def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
         """
         Generate embeddings and consume budget.
-
-        Args:
-            texts: List of strings to embed.
-            model: The embedding model to use.
-
-        Returns:
-            EmbeddingResponse.
         """
         self.budget_manager.check_budget()
         response = self.provider.embed(texts, model)
