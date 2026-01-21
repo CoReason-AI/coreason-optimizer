@@ -12,14 +12,14 @@
 Helper utilities.
 """
 
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from coreason_optimizer.core.budget import BudgetExceededError
 
 T = TypeVar("T")
 
 
-def unwrap_exception_group(exc: Exception) -> Exception:
+def unwrap_exception_group(exc: BaseException) -> BaseException:
     """
     Unwraps an ExceptionGroup.
     Prioritizes BudgetExceededError if present.
@@ -38,5 +38,5 @@ def unwrap_exception_group(exc: Exception) -> Exception:
 
         # Return first exception if no priority one found
         if exc.exceptions:
-            return exc.exceptions[0]  # type: ignore
+            return cast(BaseException, exc.exceptions[0])
     return exc

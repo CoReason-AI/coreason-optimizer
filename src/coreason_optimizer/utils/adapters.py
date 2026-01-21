@@ -12,7 +12,7 @@
 Adapters to bridge Sync and Async clients.
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import anyio
 
@@ -45,7 +45,7 @@ class SyncToAsyncLLMClientAdapter(LLMClientAsync):
         def _call() -> LLMResponse:
             return self.sync_client.generate(messages, model=model, temperature=temperature, **kwargs)
 
-        return await anyio.to_thread.run_sync(_call)
+        return cast(LLMResponse, await anyio.to_thread.run_sync(_call))
 
 
 class SyncToAsyncEmbeddingProviderAdapter(EmbeddingProviderAsync):
@@ -61,4 +61,4 @@ class SyncToAsyncEmbeddingProviderAdapter(EmbeddingProviderAsync):
         def _call() -> EmbeddingResponse:
             return self.sync_provider.embed(texts, model=model)
 
-        return await anyio.to_thread.run_sync(_call)
+        return cast(EmbeddingResponse, await anyio.to_thread.run_sync(_call))
