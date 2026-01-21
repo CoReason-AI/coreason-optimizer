@@ -9,6 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import os
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -81,3 +82,36 @@ def test_init_default() -> None:
     # If we pass client, it works
     c = OpenAIEmbeddingClient(client=MagicMock())
     assert c.client is not None
+
+
+def test_embed_large_batch() -> None:
+    # Test that client batches requests if input is larger than batch_size (500)
+    mock_client = MagicMock()
+    # We want 505 items.
+    # 1st call: 500 items. Returns 500 embeddings.
+    # 2nd call: 5 items. Returns 5 embeddings.
+
+    # Setup response side_effect
+    def side_effect(input: list[str], model: str) -> Any:
+        count = len(input)
+        resp = MagicMock()
+        resp.data = [MagicMock(embedding=[0.0] * 2) for _ in range(count)]
+        resp.usage.prompt_tokens = count  # Simple mock
+        return resp
+
+    mock_client.embeddings.create.side_effect = side_effect
+
+    budget_manager = MagicMock()
+    client = OpenAIEmbeddingClient(client=mock_client, budget_manager=budget_manager)
+
+    # Generate 505 items
+    inputs = [str(i) for i in range(505)]
+    embeddings = client.embed(inputs)
+
+    assert len(embeddings) == 505
+    assert mock_client.embeddings.create.call_count == 2
+
+    # Verify usage aggregated
+    # call 1: 500 tokens. call 2: 5 tokens. Total 505.
+    # budget_manager.consume called twice.
+    assert budget_manager.consume.call_count == 2

@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from coreason_optimizer.core.interfaces import EmbeddingProvider
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.selector import SemanticSelector
@@ -115,3 +116,45 @@ def test_semantic_selector_fill_logic() -> None:
         # Inputs should be unique if logic works
         inputs = [ex.inputs["q"] for ex in selected]
         assert len(set(inputs)) == 5
+
+
+def test_semantic_selector_edge_cases() -> None:
+    # Test handling of duplicate examples
+
+    # 3 duplicate examples, 1 different
+    ex1 = TrainingExample(inputs={"q": "A"}, reference="A")
+    ex2 = TrainingExample(inputs={"q": "A"}, reference="A")  # Duplicate
+    ex3 = TrainingExample(inputs={"q": "A"}, reference="A")  # Duplicate
+    ex4 = TrainingExample(inputs={"q": "B"}, reference="B")
+
+    examples = [ex1, ex2, ex3, ex4]
+    ds = Dataset(examples)
+
+    # Mock provider: "q: A" -> [0.0, 0.0], "q: B" -> [1.0, 1.0]
+    class MockProvider(EmbeddingProvider):
+        def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+            res = []
+            for t in texts:
+                if "A" in t:
+                    res.append([0.0, 0.0])
+                else:
+                    res.append([1.0, 1.0])
+            return res
+
+    selector = SemanticSelector(embedding_provider=MockProvider(), seed=42)
+
+    # Select k=2. Should pick one A and one B.
+    # K-Means will find 2 clusters (A-group, B-group).
+    selected = selector.select(ds, k=2)
+
+    assert len(selected) == 2
+    inputs = sorted([ex.inputs["q"] for ex in selected])
+    assert inputs == ["A", "B"]
+
+    # Select k=3. Should pick A, B, and fill 3rd (either A or duplicate logic handles it)
+    # The current fill logic picks from remaining_indices.
+    # remaining are two A's. So it will pick another A.
+    selected = selector.select(ds, k=3)
+    assert len(selected) == 3
+    inputs = sorted([ex.inputs["q"] for ex in selected])
+    assert inputs == ["A", "A", "B"]

@@ -158,33 +158,38 @@ class OpenAIEmbeddingClient:
     def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
         """Generate embeddings for a list of texts."""
         model = model or "text-embedding-3-small"
+        batch_size = 500
+        all_embeddings = []
 
         try:
             if self.budget_manager:
                 self.budget_manager.check_budget()
 
-            # OpenAI embedding call
-            # Input can be list of strings
-            response = self.client.embeddings.create(input=texts, model=model)
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i : i + batch_size]
 
-            embeddings = [data.embedding for data in response.data]
+                # OpenAI embedding call
+                response = self.client.embeddings.create(input=batch, model=model)
 
-            if self.budget_manager and response.usage:
-                tokens = response.usage.prompt_tokens
-                # Cost calculation
-                price_per_m = PRICING.get(model, {}).get("input", 0.02)
-                cost = (tokens / 1_000_000) * price_per_m
+                embeddings = [data.embedding for data in response.data]
+                all_embeddings.extend(embeddings)
 
-                self.budget_manager.consume(
-                    UsageStats(
-                        prompt_tokens=tokens,
-                        completion_tokens=0,
-                        total_tokens=tokens,
-                        cost_usd=cost,
+                if self.budget_manager and response.usage:
+                    tokens = response.usage.prompt_tokens
+                    # Cost calculation
+                    price_per_m = PRICING.get(model, {}).get("input", 0.02)
+                    cost = (tokens / 1_000_000) * price_per_m
+
+                    self.budget_manager.consume(
+                        UsageStats(
+                            prompt_tokens=tokens,
+                            completion_tokens=0,
+                            total_tokens=tokens,
+                            cost_usd=cost,
+                        )
                     )
-                )
 
-            return embeddings
+            return all_embeddings
 
         except Exception as e:
             logger.error(f"OpenAI Embedding failed: {e}")
