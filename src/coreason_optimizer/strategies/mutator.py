@@ -63,7 +63,7 @@ class BaseMutatorAsync(ABC):
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
     ) -> str:
-        pass
+        pass  # pragma: no cover
 
 
 class BaseMutator(ABC):
