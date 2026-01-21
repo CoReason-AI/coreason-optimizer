@@ -8,6 +8,14 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+BootstrapFewShot Optimization Strategy.
+
+This strategy improves agent performance by mining successful traces from
+the training set (where the model got the answer right) and using them as
+few-shot examples in the final prompt.
+"""
+
 import uuid
 
 from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
@@ -26,9 +34,14 @@ from coreason_optimizer.utils.logger import logger
 
 class BootstrapFewShot(PromptOptimizer):
     """
-    BootstrapFewShot strategy:
-    Mines the teacher model's successful traces on the training set to create
-    few-shot examples for the optimized prompt.
+    BootstrapFewShot strategy implementation.
+
+    Process:
+    1. Iterate through the training set.
+    2. Attempt to solve each example using the current system prompt (zero-shot).
+    3. Verify the prediction against the ground truth using the metric.
+    4. If successful, collect the example as a candidate for few-shot learning.
+    5. Select the best candidates to include in the final manifest.
     """
 
     def __init__(
@@ -37,6 +50,14 @@ class BootstrapFewShot(PromptOptimizer):
         metric: Metric,
         config: OptimizerConfig,
     ):
+        """
+        Initialize the BootstrapFewShot optimizer.
+
+        Args:
+            llm_client: The LLM client to use for generation.
+            metric: The metric to verify correctness.
+            config: Optimization configuration.
+        """
         self.metric = metric
         self.config = config
         # Wrap client with Budget Awareness
@@ -51,12 +72,17 @@ class BootstrapFewShot(PromptOptimizer):
     ) -> OptimizedManifest:
         """
         Run the bootstrapping loop.
-        1. Iterate over trainset.
-        2. Run agent (Teacher mode) on input.
-        3. Check if output matches reference via metric.
-        4. If match, keep as candidate.
-        5. Select top K candidates.
-        6. Create manifest.
+
+        Args:
+            agent: The agent construct to optimize.
+            trainset: Training examples to mine.
+            valset: Validation examples for final scoring.
+
+        Returns:
+            An OptimizedManifest containing the best few-shot examples found.
+
+        Raises:
+            BudgetExceededError: If the budget limit is reached.
         """
         logger.info(
             "Starting BootstrapFewShot compilation",

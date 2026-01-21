@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Instruction Mutation Strategy.
+
+This module provides the logic for using a Meta-LLM to rewrite system instructions
+based on observed failure cases.
+"""
+
 import json
 from abc import ABC, abstractmethod
 
@@ -48,6 +55,12 @@ class BaseMutator(ABC):
     """Abstract base class for instruction mutation strategies."""
 
     def __init__(self, llm_client: LLMClient):
+        """
+        Initialize the BaseMutator.
+
+        Args:
+            llm_client: The LLM client to use for mutation.
+        """
         self.llm_client = llm_client
 
     @abstractmethod
@@ -56,7 +69,16 @@ class BaseMutator(ABC):
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
     ) -> str:
-        """Generate a new instruction based on the current one and optional failure cases."""
+        """
+        Generate a new instruction based on the current one and optional failure cases.
+
+        Args:
+            current_instruction: The existing system prompt.
+            failed_examples: A list of examples that the current instruction failed on.
+
+        Returns:
+            The new system instruction string.
+        """
         pass  # pragma: no cover
 
 
@@ -68,6 +90,7 @@ class IdentityMutator(BaseMutator):
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
     ) -> str:
+        """Return the instruction as-is."""
         return current_instruction
 
 
@@ -75,6 +98,13 @@ class LLMInstructionMutator(BaseMutator):
     """Mutates instructions using a Meta-LLM to address failures."""
 
     def __init__(self, llm_client: LLMClient, config: OptimizerConfig):
+        """
+        Initialize the LLMInstructionMutator.
+
+        Args:
+            llm_client: The LLM client for the meta-prompt.
+            config: Configuration object (e.g., for meta_model name).
+        """
         super().__init__(llm_client)
         self.config = config
 
@@ -85,6 +115,13 @@ class LLMInstructionMutator(BaseMutator):
     ) -> str:
         """
         Generate a new instruction by asking the Meta-LLM to analyze failures.
+
+        Args:
+            current_instruction: The current instruction.
+            failed_examples: List of TrainingExample where the current instruction failed.
+
+        Returns:
+            A new, potentially improved instruction string.
         """
         if not failed_examples:
             logger.warning("No failed examples provided for mutation. Returning original instruction.")
@@ -121,7 +158,16 @@ class LLMInstructionMutator(BaseMutator):
             return current_instruction
 
     def _build_meta_prompt(self, instruction: str, failures: list[TrainingExample]) -> str:
-        """Construct the meta-prompt for the LLM using Jinja2."""
+        """
+        Construct the meta-prompt for the LLM using Jinja2.
+
+        Args:
+            instruction: Current instruction.
+            failures: List of failure examples.
+
+        Returns:
+            The full prompt string for the Meta-LLM.
+        """
         display_failures = failures[:10]
         failures_hidden_count = len(failures) - len(display_failures)
 

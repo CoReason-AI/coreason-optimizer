@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Dynamic import utilities.
+
+This module provides functionality to load python objects (specifically Agents)
+from file paths, handling different path formats and protocol validation.
+"""
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -19,8 +26,21 @@ from coreason_optimizer.core.interfaces import Construct
 def load_agent_from_path(agent_path_str: str) -> Construct:
     """
     Load an agent (Construct) from a file path string.
+
     Format: "path/to/file.py" (defaults to variable 'agent')
             "path/to/file.py:variable_name"
+
+    Args:
+        agent_path_str: The path string to the python file and optional variable.
+
+    Returns:
+        The loaded agent object which conforms to the Construct protocol.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ImportError: If the module cannot be imported.
+        AttributeError: If the specified variable is not found in the module.
+        TypeError: If the loaded object does not satisfy the Construct protocol.
     """
     file_path: Path | None = None
     variable_name = "agent"

@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Example Selection Strategy.
+
+This module provides classes to select a subset of training examples to be used
+as few-shot demonstrations, using either random sampling or semantic clustering.
+"""
+
 import json
 import random
 from abc import ABC, abstractmethod
@@ -25,7 +32,16 @@ class BaseSelector(ABC):
 
     @abstractmethod
     def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
-        """Select k examples from the training set."""
+        """
+        Select k examples from the training set.
+
+        Args:
+            trainset: The source dataset.
+            k: The number of examples to select.
+
+        Returns:
+            A list of selected TrainingExample objects.
+        """
         pass  # pragma: no cover
 
 
@@ -33,10 +49,25 @@ class RandomSelector(BaseSelector):
     """Randomly selects examples from the training set."""
 
     def __init__(self, seed: int = 42):
+        """
+        Initialize RandomSelector.
+
+        Args:
+            seed: Random seed for reproducibility.
+        """
         self.seed = seed
 
     def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
-        """Select k random examples."""
+        """
+        Select k random examples.
+
+        Args:
+            trainset: The source dataset.
+            k: Number of examples to select.
+
+        Returns:
+            List of randomly selected examples.
+        """
         if len(trainset) <= k:
             return list(trainset)
 
@@ -47,6 +78,7 @@ class RandomSelector(BaseSelector):
 class SemanticSelector(BaseSelector):
     """
     Selects diverse examples using K-Means clustering on embeddings.
+
     Logic:
     1. Embed all examples.
     2. Cluster into k clusters.
@@ -54,12 +86,29 @@ class SemanticSelector(BaseSelector):
     """
 
     def __init__(self, embedding_provider: EmbeddingProvider, seed: int = 42, embedding_model: str | None = None):
+        """
+        Initialize SemanticSelector.
+
+        Args:
+            embedding_provider: Provider to generate embeddings.
+            seed: Random seed for clustering initialization.
+            embedding_model: Optional specific model to use for embeddings.
+        """
         self.embedding_provider = embedding_provider
         self.seed = seed
         self.embedding_model = embedding_model
 
     def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
-        """Select k diverse examples using clustering."""
+        """
+        Select k diverse examples using clustering.
+
+        Args:
+            trainset: The source dataset.
+            k: Number of examples to select.
+
+        Returns:
+            List of diverse examples.
+        """
         if len(trainset) <= k:
             return list(trainset)
 

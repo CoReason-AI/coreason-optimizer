@@ -1,173 +1,82 @@
 # coreason-optimizer
 
-**coreason-optimizer** is the "Compiler" for the CoReason Agentic Platform. It automates prompt engineering by treating prompts (instructions and few-shot examples) as **trainable weights**.
+**The Compiler for the CoReason Agentic Platform.**
 
-[![CI/CD](https://github.com/CoReason-AI/coreason_optimizer/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/CoReason-AI/coreason_optimizer/actions/workflows/ci-cd.yml)
-[![PyPI](https://img.shields.io/pypi/v/coreason_optimizer.svg)](https://pypi.org/project/coreason_optimizer/)
-[![License](https://img.shields.io/github/license/CoReason-AI/coreason_optimizer)](https://github.com/CoReason-AI/coreason_optimizer/blob/main/LICENSE)
+[![Organization](https://img.shields.io/badge/org-CoReason--AI-blue)](https://github.com/CoReason-AI)
+[![License](https://img.shields.io/badge/License-Prosperity%203.0-blue)](https://prosperitylicense.com/versions/3.0.0)
+[![CI](https://github.com/CoReason-AI/coreason_optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/CoReason-AI/coreason_optimizer/actions)
+[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-## Overview
-
-In the current State-of-the-Art, writing static prompts by hand is technical debt. `coreason-optimizer` solves this by:
-*   **Automated Optimization**: Using meta-algorithms to rewrite instructions and select examples.
-*   **Model-Specific Compilation**: Tuning prompts specifically for the target model (e.g., GPT-4o, Claude 3.5).
-*   **Continuous Learning**: Updating prompts based on new data.
+**coreason-optimizer** automates the process of prompt engineering by treating prompts as trainable weights. It takes a "Draft Agent" and iterates on it against a ground-truth dataset to mathematically maximize performance metrics, producing a frozen, production-ready manifest.
 
 ## Features
 
-*   **Strategies**:
-    *   **Bootstrap Few-Shot**: Mines successful traces from the training set to create few-shot examples.
-    *   **MIPRO (Multi-prompt Instruction PRoposal Optimizer)**: A Bayesian-style optimizer that proposes new instructions and selects the best combination of instruction and few-shot examples.
-*   **Cost Awareness**: Built-in `BudgetManager` to halt optimization if token spend exceeds a defined limit.
-*   **Data Support**: Loaders for CSV and JSONL datasets with automatic splitting.
+*   **Automated Optimization:** Replaces manual prompt tweaking with algorithmic optimization strategies (BootstrapFewShot, MIPRO).
+*   **Model-Specific Compilation:** Tunes prompts specifically for the target model (e.g., GPT-4o, Claude 3.5), handling model quirks automatically.
+*   **Continuous Learning:**  Easily re-optimize agents as new data becomes available in `coreason-archive`, preventing drift.
+*   **Cost Awareness:** Built-in budget management to prevent runaway API costs during optimization runs.
+*   **Determinism:** Produces immutable, versioned `OptimizedManifest.json` artifacts for GxP compliance and reproducibility.
 
 ## Installation
 
-### Prerequisites
+```bash
+pip install coreason-optimizer
+```
 
-*   Python 3.12+
-*   Poetry
+## Usage
 
-### Steps
+### 1. Optimize an Agent
 
-1.  Clone the repository:
-    ```sh
-    git clone https://github.com/CoReason-AI/coreason_optimizer.git
-    cd coreason_optimizer
-    ```
-2.  Install dependencies:
-    ```sh
-    poetry install
-    ```
+Use the CLI to optimize an agent defined in `src/agents/analyst.py`.
 
-3.  Set up environment variables (required for OpenAI models):
-    ```sh
-    export OPENAI_API_KEY="sk-..."
-    ```
-
-## CLI Usage
-
-The package provides a CLI tool `coreason-opt` for easy integration into CI/CD pipelines.
-
-### Tuning (Optimization)
-
-Optimize an agent's prompt against a dataset.
-
-```sh
-poetry run coreason-opt tune \
-    --agent src/agents/analyst.py:AnalystAgent \
+```bash
+# Optimize using MIPRO strategy
+coreason-opt tune \
+    --agent src/agents/analyst.py \
     --dataset data/gold_set.csv \
     --strategy mipro \
-    --output optimized_manifest.json
+    --output dist/analyst_v2.json
 ```
 
-**Options:**
-*   `--agent`: Path to the agent file and class/object (e.g., `path/to/file.py:AgentClass`).
-*   `--dataset`: Path to the dataset (`.csv` or `.jsonl`).
-*   `--strategy`: Optimization strategy: `mipro` (default) or `bootstrap`.
-*   `--selector`: Example selection strategy: `random` or `semantic` (requires embeddings).
-*   `--base-model`: Target LLM model (overrides config).
-*   `--epochs`: Max optimization rounds/candidates.
-*   `--demos`: Max number of few-shot examples.
-*   `--output`: Output path for the `OptimizedManifest.json`.
+### 2. Run the Optimized Agent
 
-### Evaluation
-
-Evaluate an optimized manifest against a test set.
-
-```sh
-poetry run coreason-opt evaluate \
-    --manifest optimized_manifest.json \
-    --dataset data/test_set.csv \
-    --metric exact_match
-```
-
-**Options:**
-*   `--manifest`: Path to the optimized manifest JSON file.
-*   `--dataset`: Path to the evaluation dataset.
-*   `--metric`: Metric to use: `exact_match`, `f1_score`, or `json_validity`.
-
-## Library Usage
-
-You can also use `coreason-optimizer` directly in Python for more advanced configuration.
+Load the manifest and use the optimized prompt in your application code.
 
 ```python
-from coreason_optimizer.core.config import OptimizerConfig
+import json
+from coreason_optimizer.core.models import OptimizedManifest
+from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.client import OpenAIClient
-from coreason_optimizer.core.metrics import MetricFactory
-from coreason_optimizer.strategies.mipro import MiproOptimizer
-from coreason_optimizer.data.loader import Dataset
-# Assuming you have an Agent object that satisfies the Construct protocol
-# from my_agent import agent
 
-# 1. Configure
-config = OptimizerConfig(
-    target_model="gpt-4o",
-    budget_limit_usd=5.0,
-    max_rounds=5
+# 1. Load the optimized manifest
+with open("dist/analyst_v2.json", "r") as f:
+    manifest = OptimizedManifest(**json.load(f))
+
+# 2. Prepare user input
+user_input = {"question": "What is the capital of France?"}
+
+# 3. Format the prompt using the optimized instruction and examples
+prompt = format_prompt(
+    system_prompt=manifest.optimized_instruction,
+    examples=manifest.few_shot_examples,
+    inputs=user_input
 )
 
-# 2. Initialize Components
+# 4. Generate response
 client = OpenAIClient()
-metric = MetricFactory.get("exact_match")
-optimizer = MiproOptimizer(client, metric, config)
+response = client.generate(
+    messages=[{"role": "user", "content": prompt}],
+    model=manifest.base_model
+)
 
-# 3. Load Data
-train_set = Dataset.from_csv("data/train.csv", input_cols=["question"], reference_col="answer")
-val_set = Dataset.from_csv("data/val.csv", input_cols=["question"], reference_col="answer")
-
-# 4. Compile (Requires 'agent' object)
-# manifest = optimizer.compile(agent, list(train_set), list(val_set))
-
-# 5. Save
-# with open("optimized_manifest.json", "w") as f:
-#     f.write(manifest.model_dump_json(indent=2))
+print(response.content)
 ```
 
-## Configuration
+## Documentation
 
-You can configure the optimizer defaults via `OptimizerConfig`.
+For more detailed documentation on strategies, configuration, and API references, please refer to the [docs/](docs/) directory or visit our [GitHub pages](https://github.com/CoReason-AI/coreason_optimizer).
 
-| Parameter | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `target_model` | str | `gpt-4o` | The identifier of the target LLM to optimize for. |
-| `meta_model` | str | `gpt-4o` | The identifier of the meta-LLM used for instruction optimization. |
-| `metric` | str | `exact_match` | The metric function to use (`exact_match`, `f1_score`). |
-| `selector_type` | str | `random` | Strategy for selecting examples (`random`, `semantic`). |
-| `embedding_model` | str | `text-embedding-3-small` | Embedding model for semantic selection. |
-| `max_bootstrapped_demos` | int | 4 | Maximum number of few-shot examples to bootstrap. |
-| `max_rounds` | int | 10 | Maximum number of optimization rounds. |
-| `budget_limit_usd` | float | 10.00 | Maximum budget in USD for the optimization run. |
+## License
 
-## Development
-
-### Running Tests
-
-To run the test suite with coverage:
-
-```sh
-poetry run pytest
-```
-
-### Linting and Formatting
-
-This project uses `ruff` and `mypy`.
-
-```sh
-# Format
-poetry run ruff format .
-
-# Lint
-poetry run ruff check --fix .
-
-# Type Check
-poetry run mypy .
-```
-
-### Pre-commit Hooks
-
-Ensure all checks pass before committing:
-
-```sh
-poetry run pre-commit run --all-files
-```
+This software is proprietary and dual-licensed under the **Prosperity Public License 3.0**.
+Commercial use beyond a 30-day trial requires a separate license. See [LICENSE](LICENSE) for details.

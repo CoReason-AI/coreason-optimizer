@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+CLI Entrypoint for the Coreason Optimizer.
+
+This module provides the command-line interface for the optimization tool,
+supporting commands to tune agents and evaluate manifests.
+"""
+
 import json
 from pathlib import Path
 
@@ -68,7 +75,19 @@ def tune(
     strategy: str,
     selector: str | None,
 ) -> None:
-    """Optimize an agent's prompt against a dataset."""
+    """
+    Optimize an agent's prompt against a dataset.
+
+    Args:
+        agent: Path to the agent file (and optional variable name).
+        dataset: Path to the dataset file (.csv or .jsonl).
+        base_model: Target LLM model identifier.
+        epochs: Maximum number of optimization rounds.
+        demos: Maximum number of few-shot examples to include.
+        output: Path to save the resulting OptimizedManifest JSON.
+        strategy: Optimization strategy to use ('mipro' or 'bootstrap').
+        selector: Few-shot example selection strategy ('random' or 'semantic').
+    """
     logger.info(f"Starting optimization for agent: {agent}")
 
     # Load Agent
@@ -163,7 +182,14 @@ def tune(
 @click.option("--dataset", required=True, help="Path to the evaluation dataset")
 @click.option("--metric", default="exact_match", help="Metric to use for evaluation")
 def evaluate(manifest: str, dataset: str, metric: str) -> None:
-    """Evaluate an optimized manifest against a dataset."""
+    """
+    Evaluate an optimized manifest against a dataset.
+
+    Args:
+        manifest: Path to the optimized manifest JSON file.
+        dataset: Path to the evaluation dataset file.
+        metric: The metric to use for scoring (e.g., 'exact_match').
+    """
     # Load Manifest
     try:
         with open(manifest, "r", encoding="utf-8") as f:
