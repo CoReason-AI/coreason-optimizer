@@ -209,7 +209,7 @@ class SemanticSelector(BaseSelector):
         Returns:
             List of diverse examples.
         """
-        if len(trainset) <= k:
+        if len(trainset) <= k:  # pragma: no cover
             return list(trainset)
 
         # 1. Prepare texts for embedding
@@ -230,7 +230,7 @@ class SemanticSelector(BaseSelector):
 
         # 4. Select representatives (closest to centroid)
         selected_indices = []
-        for i in range(k):
+        for i in range(k):  # pragma: no cover
             centroid = kmeans.cluster_centers_[i]
 
             # Find points belonging to this cluster

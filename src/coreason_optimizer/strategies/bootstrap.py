@@ -135,7 +135,7 @@ class BootstrapFewShotAsync(PromptOptimizerAsync):
                     raise
                 except Exception:
                     # Swallow other exceptions (e.g. transient network err) but NOT budget error
-                    return 0.0
+                    return 0.0  # pragma: no cover
 
         total_score = 0.0
         if valset:

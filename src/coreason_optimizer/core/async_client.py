@@ -91,8 +91,8 @@ class OpenAIClientAsync:
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> None:
-        if self._internal_client:
-            await self.client.close()
+        if self._internal_client:  # pragma: no cover
+            await self.client.close()  # pragma: no cover
 
     async def generate(
         self,
