@@ -53,9 +53,10 @@ class SemanticSelector(BaseSelector):
     3. Select the example closest to the centroid of each cluster.
     """
 
-    def __init__(self, embedding_provider: EmbeddingProvider, seed: int = 42):
+    def __init__(self, embedding_provider: EmbeddingProvider, seed: int = 42, embedding_model: str | None = None):
         self.embedding_provider = embedding_provider
         self.seed = seed
+        self.embedding_model = embedding_model
 
     def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
         """Select k diverse examples using clustering."""
@@ -70,7 +71,7 @@ class SemanticSelector(BaseSelector):
             texts.append(text)
 
         # 2. Get embeddings
-        response = self.embedding_provider.embed(texts)
+        response = self.embedding_provider.embed(texts, model=self.embedding_model)
         X = np.array(response.embeddings)
 
         # 3. K-Means Clustering

@@ -74,7 +74,7 @@ class MiproOptimizer(PromptOptimizer):
 
             # Wrap embedding provider sharing the SAME budget manager
             wrapped_embedder = BudgetAwareEmbeddingProvider(embedding_provider, self.budget_manager)
-            self.selector = SemanticSelector(wrapped_embedder, seed=42)
+            self.selector = SemanticSelector(wrapped_embedder, seed=42, embedding_model=config.embedding_model)
         else:
             self.selector = RandomSelector(seed=42)
 

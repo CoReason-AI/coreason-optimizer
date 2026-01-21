@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from coreason_optimizer.core.budget import BudgetExceededError
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import (
     EmbeddingProvider,
@@ -258,3 +259,38 @@ def test_mipro_missing_embedding_provider(mock_llm: MagicMock, mock_metric: Magi
 
     with pytest.raises(ValueError, match="Embedding provider is required"):
         MiproOptimizer(mock_llm, mock_metric, config)
+
+
+def test_mipro_semantic_budget_exceeded(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+    """Test that BudgetExceededError propagates during semantic selection."""
+    # Set a very low budget
+    config = OptimizerConfig(
+        selector_type="semantic",
+        embedding_model="expensive-model",
+        budget_limit_usd=0.0000001,
+        max_bootstrapped_demos=1,
+    )
+
+    # Mock Embedder that consumes budget
+    mock_embedder = MagicMock(spec=EmbeddingProvider)
+    # The UsageStats cost should exceed budget
+    mock_embedder.embed.return_value = EmbeddingResponse(embeddings=[[0.1], [0.1]], usage=UsageStats(cost_usd=1.0))
+
+    optimizer = MiproOptimizer(
+        mock_llm,
+        mock_metric,
+        config,
+        embedding_provider=mock_embedder,
+        num_instruction_candidates=1,
+        num_fewshot_combinations=1,
+    )
+
+    agent = MockConstruct()
+    trainset = [
+        TrainingExample(inputs={"q": "1"}, reference="A"),
+        TrainingExample(inputs={"q": "2"}, reference="B"),
+    ]
+
+    # Should raise BudgetExceededError when selecting examples
+    with pytest.raises(BudgetExceededError):
+        optimizer.compile(agent, trainset, [])
