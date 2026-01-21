@@ -15,6 +15,7 @@ import click
 
 from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient
 from coreason_optimizer.core.config import OptimizerConfig
+from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.interfaces import PromptOptimizer
 from coreason_optimizer.core.metrics import MetricFactory
 from coreason_optimizer.core.models import OptimizedManifest
@@ -199,10 +200,6 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
     except ValueError as e:
         raise click.ClickException(str(e)) from e
 
-    # Helper for prompting (reusing BootstrapFewShot logic)
-    dummy_config = OptimizerConfig(target_model=manifest_obj.base_model)
-    helper = BootstrapFewShot(client, metric_func, dummy_config)
-
     total_score = 0.0
     count = 0
 
@@ -213,7 +210,7 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
     with click.progressbar(examples_list, label="Evaluating") as bar:
         for example in bar:
             # Reconstruct prompt using optimized instruction and examples
-            prompt = helper._format_prompt(
+            prompt = format_prompt(
                 system_prompt=manifest_obj.optimized_instruction,
                 examples=manifest_obj.few_shot_examples,
                 inputs=example.inputs,
