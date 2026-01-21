@@ -9,11 +9,11 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import uuid
-from typing import Any
 
 from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
 from coreason_optimizer.core.client import BudgetAwareLLMClient
 from coreason_optimizer.core.config import OptimizerConfig
+from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.interfaces import (
     Construct,
     LLMClient,
@@ -43,43 +43,6 @@ class BootstrapFewShot(PromptOptimizer):
         self.budget_manager = BudgetManager(config.budget_limit_usd)
         self.llm_client = BudgetAwareLLMClient(llm_client, self.budget_manager)
 
-    def _format_prompt(
-        self,
-        system_prompt: str,
-        examples: list[TrainingExample],
-        inputs: dict[str, Any],
-    ) -> str:
-        """
-        Sensible default prompt formatter.
-        Structure:
-        ### System Instruction
-        ...
-        ### Examples
-        Input: ...
-        Output: ...
-        ### User Input
-        Input: ...
-        """
-        parts = []
-
-        # System Prompt
-        parts.append(f"### System Instruction\n{system_prompt}")
-
-        # Examples
-        if examples:
-            parts.append("### Examples")
-            for ex in examples:
-                # We assume inputs are dicts, we serialize them simply
-                input_str = ", ".join(f"{k}: {v}" for k, v in ex.inputs.items())
-                parts.append(f"Input: {input_str}\nOutput: {ex.reference}")
-
-        # User Input
-        parts.append("### User Input")
-        current_input_str = ", ".join(f"{k}: {v}" for k, v in inputs.items())
-        parts.append(f"Input: {current_input_str}")
-
-        return "\n\n".join(parts)
-
     def compile(
         self,
         agent: Construct,
@@ -106,9 +69,7 @@ class BootstrapFewShot(PromptOptimizer):
         # 1. Mine successful traces
         for i, example in enumerate(trainset):
             # Format prompt with *no* examples initially (zero-shot) to see if the model can solve it
-            # Or should we use existing examples? The prompt implies "BootstrapFewShot" mines traces.
-            # Usually we start with 0-shot to find easy examples that become 1-shot for others.
-            prompt = self._format_prompt(
+            prompt = format_prompt(
                 system_prompt=agent.system_prompt,
                 examples=[],
                 inputs=example.inputs,
@@ -133,9 +94,6 @@ class BootstrapFewShot(PromptOptimizer):
             score = self.metric(prediction, example.reference)
 
             # 4. Filter
-            # exact_match returns 1.0 or 0.0. F1 returns 0.0-1.0.
-            # We treat strict 1.0 as success for now, or maybe >= threshold?
-            # Given PRD examples (ExactMatch), 1.0 is safe.
             if score >= 1.0:
                 logger.debug(f"Example {i} passed with score {score}")
                 successful_traces.append(example)
@@ -154,7 +112,7 @@ class BootstrapFewShot(PromptOptimizer):
         total_score = 0.0
         if valset:
             for example in valset:
-                prompt = self._format_prompt(
+                prompt = format_prompt(
                     system_prompt=agent.system_prompt,
                     examples=selected_examples,
                     inputs=example.inputs,

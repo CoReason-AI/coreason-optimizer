@@ -9,7 +9,6 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import uuid
-from typing import Any
 
 from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
 from coreason_optimizer.core.client import (
@@ -17,6 +16,7 @@ from coreason_optimizer.core.client import (
     BudgetAwareLLMClient,
 )
 from coreason_optimizer.core.config import OptimizerConfig
+from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.interfaces import (
     Construct,
     EmbeddingProvider,
@@ -78,35 +78,6 @@ class MiproOptimizer(PromptOptimizer):
         else:
             self.selector = RandomSelector(seed=42)
 
-    def _format_prompt(
-        self,
-        system_prompt: str,
-        examples: list[TrainingExample],
-        inputs: dict[str, Any],
-    ) -> str:
-        """
-        Format the prompt with system instruction and examples.
-        (Duplicated from BootstrapFewShot for atomic isolation)
-        """
-        parts = []
-
-        # System Prompt
-        parts.append(f"### System Instruction\n{system_prompt}")
-
-        # Examples
-        if examples:
-            parts.append("### Examples")
-            for ex in examples:
-                input_str = ", ".join(f"{k}: {v}" for k, v in ex.inputs.items())
-                parts.append(f"Input: {input_str}\nOutput: {ex.reference}")
-
-        # User Input
-        parts.append("### User Input")
-        current_input_str = ", ".join(f"{k}: {v}" for k, v in inputs.items())
-        parts.append(f"Input: {current_input_str}")
-
-        return "\n\n".join(parts)
-
     def _evaluate_candidate(
         self,
         instruction: str,
@@ -116,7 +87,7 @@ class MiproOptimizer(PromptOptimizer):
         """Evaluate a single candidate (instruction + examples) on a dataset."""
         total_score = 0.0
         for example in dataset:
-            prompt = self._format_prompt(instruction, examples, example.inputs)
+            prompt = format_prompt(instruction, examples, example.inputs)
             try:
                 response = self.llm_client.generate(
                     messages=[{"role": "user", "content": prompt}],
@@ -157,7 +128,7 @@ class MiproOptimizer(PromptOptimizer):
         # We use the original instruction and NO examples (or random examples?) for diagnosis.
         # Let's use 0-shot with original instruction.
         for example in trainset:
-            prompt = self._format_prompt(agent.system_prompt, [], example.inputs)
+            prompt = format_prompt(agent.system_prompt, [], example.inputs)
             try:
                 response = self.llm_client.generate(
                     messages=[{"role": "user", "content": prompt}],
