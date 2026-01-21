@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openai import OpenAIError
 
-from coreason_optimizer.core.client import OpenAIEmbeddingClient
+from coreason_optimizer.core.client import BudgetAwareEmbeddingProvider, OpenAIEmbeddingClient
 
 
 def test_embed_success() -> None:
@@ -27,31 +27,28 @@ def test_embed_success() -> None:
     mock_response.usage.prompt_tokens = 10
     mock_client.embeddings.create.return_value = mock_response
 
+    client = OpenAIEmbeddingClient(client=mock_client)
+    response = client.embed(["a", "b"])
+
+    assert len(response.embeddings) == 2
+    assert response.embeddings[0] == [0.1, 0.2]
+    assert response.usage.prompt_tokens == 10
+    assert response.usage.cost_usd > 0  # Should be calculated
+
+
+def test_budget_aware_provider() -> None:
+    mock_provider = MagicMock()
+    # Mock usage
+    usage = MagicMock(prompt_tokens=10, cost_usd=0.01)
+    mock_provider.embed.return_value = MagicMock(embeddings=[[1.0]], usage=usage)
+
     budget_manager = MagicMock()
 
-    client = OpenAIEmbeddingClient(client=mock_client, budget_manager=budget_manager)
-    embeddings = client.embed(["a", "b"])
+    wrapper = BudgetAwareEmbeddingProvider(provider=mock_provider, budget_manager=budget_manager)
+    wrapper.embed(["a"])
 
-    assert len(embeddings) == 2
-    assert embeddings[0] == [0.1, 0.2]
-
-    # Check budget consumption
-    budget_manager.consume.assert_called_once()
-    usage = budget_manager.consume.call_args[0][0]
-    assert usage.prompt_tokens == 10
-    assert usage.cost_usd > 0
-
-
-def test_embed_no_budget() -> None:
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=[0.1])]
-    mock_response.usage = None  # Handle missing usage
-    mock_client.embeddings.create.return_value = mock_response
-
-    client = OpenAIEmbeddingClient(client=mock_client)
-    embeddings = client.embed(["a"])
-    assert len(embeddings) == 1
+    budget_manager.check_budget.assert_called_once()
+    budget_manager.consume.assert_called_with(usage)
 
 
 def test_embed_error() -> None:
@@ -66,11 +63,9 @@ def test_embed_error() -> None:
 def test_init_default() -> None:
     # Test initialization without client (reads env var, assumes mock/env)
     # If OPENAI_API_KEY is present, it succeeds. If not, it raises.
-    # We can patch os.environ to force failure or success.
 
     # Force failure
     with patch.dict(os.environ, {}, clear=True):
-        # OpenAI() raises if no key provided and no env var
         with pytest.raises(OpenAIError):
             OpenAIEmbeddingClient()
 
@@ -88,30 +83,24 @@ def test_embed_large_batch() -> None:
     # Test that client batches requests if input is larger than batch_size (500)
     mock_client = MagicMock()
     # We want 505 items.
-    # 1st call: 500 items. Returns 500 embeddings.
-    # 2nd call: 5 items. Returns 5 embeddings.
+    # 1st call: 500 items. 2nd call: 5 items.
 
     # Setup response side_effect
     def side_effect(input: list[str], model: str) -> Any:
         count = len(input)
         resp = MagicMock()
         resp.data = [MagicMock(embedding=[0.0] * 2) for _ in range(count)]
-        resp.usage.prompt_tokens = count  # Simple mock
+        resp.usage.prompt_tokens = count
         return resp
 
     mock_client.embeddings.create.side_effect = side_effect
 
-    budget_manager = MagicMock()
-    client = OpenAIEmbeddingClient(client=mock_client, budget_manager=budget_manager)
+    client = OpenAIEmbeddingClient(client=mock_client)
 
     # Generate 505 items
     inputs = [str(i) for i in range(505)]
-    embeddings = client.embed(inputs)
+    response = client.embed(inputs)
 
-    assert len(embeddings) == 505
+    assert len(response.embeddings) == 505
+    assert response.usage.prompt_tokens == 505
     assert mock_client.embeddings.create.call_count == 2
-
-    # Verify usage aggregated
-    # call 1: 500 tokens. call 2: 5 tokens. Total 505.
-    # budget_manager.consume called twice.
-    assert budget_manager.consume.call_count == 2

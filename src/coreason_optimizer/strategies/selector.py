@@ -8,6 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+import json
 import random
 from abc import ABC, abstractmethod
 
@@ -64,13 +65,13 @@ class SemanticSelector(BaseSelector):
         # 1. Prepare texts for embedding
         texts = []
         for ex in trainset:
-            # Simple serialization: "input1: val1\ninput2: val2"
-            text = "\n".join(f"{key}: {val}" for key, val in ex.inputs.items())
+            # Use JSON serialization for robustness
+            text = json.dumps(ex.inputs, sort_keys=True)
             texts.append(text)
 
         # 2. Get embeddings
-        embeddings = self.embedding_provider.embed(texts)
-        X = np.array(embeddings)
+        response = self.embedding_provider.embed(texts)
+        X = np.array(response.embeddings)
 
         # 3. K-Means Clustering
         # n_init="auto" is default in newer sklearn, explicit for safety

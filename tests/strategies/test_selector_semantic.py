@@ -8,11 +8,12 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+import json
 from unittest.mock import patch
 
 import numpy as np
 
-from coreason_optimizer.core.interfaces import EmbeddingProvider
+from coreason_optimizer.core.interfaces import EmbeddingProvider, EmbeddingResponse, UsageStats
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.selector import SemanticSelector
@@ -21,17 +22,21 @@ from coreason_optimizer.strategies.selector import SemanticSelector
 class MockEmbeddingProvider:
     """Mock provider returning deterministic embeddings."""
 
-    def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+    def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
         results = []
         for text in texts:
-            # Expect format "q: <number>"
+            # Expect JSON format
             try:
-                val = float(text.split(": ")[1])
+                data = json.loads(text)
+                # We assume examples have 'q' input key for these tests
+                val_str = str(data.get("q", "0"))
+                val = float(val_str)
                 # Return 2D point
                 results.append([val, val])
-            except (IndexError, ValueError):
+            except (ValueError, TypeError, json.JSONDecodeError):
                 results.append([0.0, 0.0])
-        return results
+
+        return EmbeddingResponse(embeddings=results, usage=UsageStats())
 
 
 def test_semantic_selector_clustering() -> None:
@@ -97,23 +102,14 @@ def test_semantic_selector_fill_logic() -> None:
         instance.fit.return_value = None
         # Mock labels: simulate that only clusters 0 and 1 have points
         # k=5. Clusters 2,3,4 are empty.
-        # Assign all points to cluster 0 or 1
         instance.labels_ = np.array([0] * 5 + [1] * 5)
         # Centers for 5 clusters (indices 0..4)
         instance.cluster_centers_ = np.zeros((5, 2))
 
-        # When select runs:
-        # i=0: labels==0 has points -> select one
-        # i=1: labels==1 has points -> select one
-        # i=2,3,4: empty -> continue
-        # Total selected from clustering = 2
-        # Need 5. Should fill 3 more randomly.
-
         selected = selector.select(ds, k=5)
 
         assert len(selected) == 5
-        # Verify uniqueness?
-        # Inputs should be unique if logic works
+        # Verify uniqueness
         inputs = [ex.inputs["q"] for ex in selected]
         assert len(set(inputs)) == 5
 
@@ -121,7 +117,6 @@ def test_semantic_selector_fill_logic() -> None:
 def test_semantic_selector_edge_cases() -> None:
     # Test handling of duplicate examples
 
-    # 3 duplicate examples, 1 different
     ex1 = TrainingExample(inputs={"q": "A"}, reference="A")
     ex2 = TrainingExample(inputs={"q": "A"}, reference="A")  # Duplicate
     ex3 = TrainingExample(inputs={"q": "A"}, reference="A")  # Duplicate
@@ -130,30 +125,27 @@ def test_semantic_selector_edge_cases() -> None:
     examples = [ex1, ex2, ex3, ex4]
     ds = Dataset(examples)
 
-    # Mock provider: "q: A" -> [0.0, 0.0], "q: B" -> [1.0, 1.0]
-    class MockProvider(EmbeddingProvider):
-        def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+    # Mock provider
+    class EdgeMockProvider(EmbeddingProvider):
+        def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
             res = []
             for t in texts:
-                if "A" in t:
+                # "q": "A" in json
+                if '"A"' in t:
                     res.append([0.0, 0.0])
                 else:
                     res.append([1.0, 1.0])
-            return res
+            return EmbeddingResponse(embeddings=res, usage=UsageStats())
 
-    selector = SemanticSelector(embedding_provider=MockProvider(), seed=42)
+    selector = SemanticSelector(embedding_provider=EdgeMockProvider(), seed=42)
 
     # Select k=2. Should pick one A and one B.
-    # K-Means will find 2 clusters (A-group, B-group).
     selected = selector.select(ds, k=2)
-
     assert len(selected) == 2
     inputs = sorted([ex.inputs["q"] for ex in selected])
     assert inputs == ["A", "B"]
 
-    # Select k=3. Should pick A, B, and fill 3rd (either A or duplicate logic handles it)
-    # The current fill logic picks from remaining_indices.
-    # remaining are two A's. So it will pick another A.
+    # Select k=3. Should pick A, B, and fill 3rd
     selected = selector.select(ds, k=3)
     assert len(selected) == 3
     inputs = sorted([ex.inputs["q"] for ex in selected])

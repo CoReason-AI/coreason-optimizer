@@ -32,6 +32,13 @@ class LLMResponse(BaseModel):
     usage: UsageStats
 
 
+class EmbeddingResponse(BaseModel):
+    """Standardized response from an embedding provider."""
+
+    embeddings: list[list[float]]
+    usage: UsageStats
+
+
 @runtime_checkable
 class Construct(Protocol):
     """Protocol representing a coreason-construct Agent."""
@@ -74,7 +81,7 @@ class Metric(Protocol):
 class EmbeddingProvider(Protocol):
     """Protocol for an embedding provider."""
 
-    def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+    def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
         """Generate embeddings for a list of texts."""
         ...  # pragma: no cover
 
