@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Dataset loading and manipulation utilities.
+
+This module provides the Dataset class to load training data from CSV or JSONL files
+and split it into training, validation, and test sets.
+"""
+
 import csv
 import json
 import random
@@ -21,6 +28,12 @@ class Dataset:
     """A container for training data with loading and splitting capabilities."""
 
     def __init__(self, examples: list[TrainingExample]):
+        """
+        Initialize the Dataset.
+
+        Args:
+            examples: A list of TrainingExample objects.
+        """
         self.examples = examples
 
     def __len__(self) -> int:
@@ -34,7 +47,20 @@ class Dataset:
 
     @classmethod
     def from_csv(cls, filepath: str | Path, input_cols: list[str], reference_col: str) -> "Dataset":
-        """Load a dataset from a CSV file."""
+        """
+        Load a dataset from a CSV file.
+
+        Args:
+            filepath: Path to the CSV file.
+            input_cols: List of column names to treat as inputs.
+            reference_col: Column name to treat as the reference output.
+
+        Returns:
+            A Dataset instance.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+        """
         path = Path(filepath)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
@@ -63,12 +89,22 @@ class Dataset:
 
     @classmethod
     def from_jsonl(cls, filepath: str | Path) -> "Dataset":
-        """Load a dataset from a JSONL file.
+        """
+        Load a dataset from a JSONL file.
 
         Expected format per line:
         {"inputs": {...}, "reference": ...}
         or
         {"input": ..., "output": ...} (will be normalized)
+
+        Args:
+            filepath: Path to the JSONL file.
+
+        Returns:
+            A Dataset instance.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
         """
         path = Path(filepath)
         if not path.exists():
@@ -106,7 +142,20 @@ class Dataset:
     def split(
         self, train_ratio: float = 0.8, val_ratio: float = 0.1, seed: int = 42
     ) -> tuple["Dataset", "Dataset", "Dataset"]:
-        """Split the dataset into Train, Validation, and Test sets."""
+        """
+        Split the dataset into Train, Validation, and Test sets.
+
+        Args:
+            train_ratio: Fraction of data for training.
+            val_ratio: Fraction of data for validation.
+            seed: Random seed for shuffling.
+
+        Returns:
+            A tuple of (train_dataset, val_dataset, test_dataset).
+
+        Raises:
+            ValueError: If train_ratio + val_ratio > 1.0.
+        """
         if train_ratio + val_ratio > 1.0:
             raise ValueError("Sum of train and val ratios must be <= 1.0")
 

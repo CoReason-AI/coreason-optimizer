@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Metrics for evaluating agent performance.
+
+This module contains various metric implementations (Exact Match, F1 Score, JSON Validity)
+and a factory to retrieve them by name.
+"""
+
 import collections
 import json
 import re
@@ -43,6 +50,16 @@ class ExactMatch(Metric):
         return 1.0 if normalize_answer(prediction) == normalize_answer(str(reference)) else 0.0
 
     def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+        """
+        Compute Exact Match score.
+
+        Args:
+            prediction: The model's output string.
+            reference: The ground truth (string or list of valid strings).
+
+        Returns:
+            1.0 if match, 0.0 otherwise.
+        """
         if isinstance(reference, list):
             return max((self._score_single(prediction, ref) for ref in reference), default=0.0)
         return self._score_single(prediction, reference)
@@ -71,6 +88,16 @@ class F1Score(Metric):
         return f1
 
     def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+        """
+        Compute F1 score.
+
+        Args:
+            prediction: The model's output string.
+            reference: The ground truth (string or list of strings).
+
+        Returns:
+            F1 score between 0.0 and 1.0.
+        """
         if isinstance(reference, list):
             return max((self._score_single(prediction, ref) for ref in reference), default=0.0)
         return self._score_single(prediction, reference)
@@ -80,6 +107,21 @@ class JsonValidity(Metric):
     """Computes whether the prediction is valid JSON (ignoring reference)."""
 
     def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+        """
+        Check if the prediction is valid JSON.
+
+        This handles:
+        1. Pure JSON strings.
+        2. Markdown code blocks (```json ... ```).
+        3. Generic code blocks.
+
+        Args:
+            prediction: The model's output string.
+            reference: Ignored.
+
+        Returns:
+            1.0 if valid JSON, 0.0 otherwise.
+        """
         text = prediction.strip()
 
         def is_valid(s: str) -> bool:
@@ -126,7 +168,18 @@ class MetricFactory:
 
     @classmethod
     def get(cls, name: str) -> Metric:
-        """Get a metric instance by name."""
+        """
+        Get a metric instance by name.
+
+        Args:
+            name: The name of the metric (e.g., 'exact_match').
+
+        Returns:
+            An instance of a Metric class.
+
+        Raises:
+            ValueError: If the metric name is unknown.
+        """
         if name not in cls._metrics:
             raise ValueError(f"Unknown metric: {name}. Available: {list(cls._metrics.keys())}")
         return cls._metrics[name]()

@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Configuration models for the Optimizer.
+
+This module defines the configuration settings for the optimization process,
+including model selection, metrics, and budget limits.
+"""
+
 from typing import Literal
 
 from pydantic import BaseModel, Field

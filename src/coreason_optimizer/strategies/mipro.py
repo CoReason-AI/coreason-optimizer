@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+MIPRO (Multi-prompt Instruction PRoposal Optimizer) Strategy.
+
+This advanced optimization strategy combines instruction mutation (via a Meta-LLM)
+and few-shot example selection to find the optimal prompt configuration.
+"""
+
 import uuid
 
 from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
@@ -55,6 +62,20 @@ class MiproOptimizer(PromptOptimizer):
         num_instruction_candidates: int = 10,
         num_fewshot_combinations: int = 5,
     ):
+        """
+        Initialize the MIPRO Optimizer.
+
+        Args:
+            llm_client: The LLM client for generation.
+            metric: The metric for evaluation.
+            config: Optimization configuration.
+            embedding_provider: Optional provider for semantic selection.
+            num_instruction_candidates: Number of instruction variations to generate.
+            num_fewshot_combinations: Number of few-shot sets to sample.
+
+        Raises:
+            ValueError: If semantic selection is requested but no embedding provider is given.
+        """
         self.metric = metric
         self.config = config
         self.num_instruction_candidates = num_instruction_candidates
@@ -112,6 +133,17 @@ class MiproOptimizer(PromptOptimizer):
     ) -> OptimizedManifest:
         """
         Run the MIPRO optimization loop.
+
+        Args:
+            agent: The agent construct.
+            trainset: Training data.
+            valset: Validation data.
+
+        Returns:
+            OptimizedManifest with best instruction and examples.
+
+        Raises:
+            BudgetExceededError: If budget is exceeded.
         """
         logger.info(
             "Starting MIPRO compilation",

@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Core interfaces and protocols.
+
+This module defines the abstract base classes, protocols, and shared data models
+used throughout the library, ensuring loose coupling and type safety.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Protocol, runtime_checkable
 
