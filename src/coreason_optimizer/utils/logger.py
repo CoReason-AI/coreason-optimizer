@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Logging configuration.
+
+This module configures the `loguru` logger for the application, setting up
+console output and file rotation for logs.
+"""
+
 import sys
 from pathlib import Path
 

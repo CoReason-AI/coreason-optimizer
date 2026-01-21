@@ -1,0 +1,7 @@
+loguru
+pydantic
+jinja2
+openai
+click
+numpy
+scikit-learn

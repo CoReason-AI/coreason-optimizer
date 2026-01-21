@@ -8,6 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+"""
+Pydantic data models used across the library.
+
+This module defines the core data structures for training examples and
+the output manifest of the optimization process.
+"""
+
 from typing import Any
 
 from pydantic import BaseModel, Field
