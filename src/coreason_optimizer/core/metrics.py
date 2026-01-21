@@ -80,22 +80,39 @@ class JsonValidity(Metric):
     """Computes whether the prediction is valid JSON (ignoring reference)."""
 
     def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
-        # 1. Clean up whitespace
         text = prediction.strip()
 
-        # 2. Extract content from Markdown code blocks if present
-        # Matches ```json ... ``` or ``` ... ``` (multiline)
-        # We search for the *first* block.
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
-        if match:
-            text = match.group(1)
+        def is_valid(s: str) -> bool:
+            try:
+                json.loads(s)
+                return True
+            except json.JSONDecodeError:
+                return False
 
-        # 3. Try to parse
-        try:
-            json.loads(text)
+        # Strategy 1: Look for explicit JSON blocks (case-insensitive)
+        # e.g. ```json { "a": 1 } ```
+        # We check ALL such blocks. If any is valid, we're good.
+        # Regex: ```json followed by anything until ```
+        explicit_pattern = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+        for match in explicit_pattern.finditer(text):
+            if is_valid(match.group(1)):
+                return 1.0
+
+        # Strategy 2: Look for generic blocks, stripping potential language tags
+        # e.g. ```\n { "a": 1 } \n```
+        # We assume standard Markdown: ```[lang]\n[content]```
+        # This handles ```python\n...``` by separating the 'python' from content.
+        generic_pattern = re.compile(r"```([^\n]*)\n(.*?)\n?```", re.DOTALL)
+        for match in generic_pattern.finditer(text):
+            content = match.group(2)
+            if is_valid(content):
+                return 1.0
+
+        # Strategy 3: Try the raw text (if no blocks or blocks failed)
+        if is_valid(text):
             return 1.0
-        except json.JSONDecodeError:
-            return 0.0
+
+        return 0.0
 
 
 class MetricFactory:
