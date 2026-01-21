@@ -9,6 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import collections
+import json
 import re
 import string
 from typing import Any, Callable
@@ -75,12 +76,35 @@ class F1Score(Metric):
         return self._score_single(prediction, reference)
 
 
+class JsonValidity(Metric):
+    """Computes whether the prediction is valid JSON (ignoring reference)."""
+
+    def __call__(self, prediction: str, reference: Any, **kwargs: Any) -> float:
+        # 1. Clean up whitespace
+        text = prediction.strip()
+
+        # 2. Extract content from Markdown code blocks if present
+        # Matches ```json ... ``` or ``` ... ``` (multiline)
+        # We search for the *first* block.
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+        if match:
+            text = match.group(1)
+
+        # 3. Try to parse
+        try:
+            json.loads(text)
+            return 1.0
+        except json.JSONDecodeError:
+            return 0.0
+
+
 class MetricFactory:
     """Factory for creating metrics by name."""
 
     _metrics: dict[str, Callable[[], Metric]] = {
         "exact_match": ExactMatch,
         "f1_score": F1Score,
+        "json_validity": JsonValidity,
     }
 
     @classmethod
