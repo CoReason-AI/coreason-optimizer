@@ -360,3 +360,77 @@ def test_evaluate_csv_fail_no_demos(runner: CliRunner, tmp_path: Path) -> None:
     )
     assert result.exit_code != 0
     assert "Cannot infer CSV schema" in result.output
+
+
+def test_tune_semantic_selector(
+    runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path, tmp_path: Path
+) -> None:
+    output_path = tmp_path / "out_semantic.json"
+
+    with (
+        patch("coreason_optimizer.main.OpenAIClient"),
+        patch("coreason_optimizer.main.OpenAIEmbeddingClient") as MockEmbed,
+        patch("coreason_optimizer.main.MiproOptimizer") as MockMipro,
+    ):
+        mock_instance = MockMipro.return_value
+        mock_instance.compile.return_value = OptimizedManifest(
+            agent_id="test",
+            base_model="gpt-4o",
+            optimized_instruction="new_sys",
+            few_shot_examples=[],
+            performance_metric=0.9,
+            optimization_run_id="run_1",
+        )
+
+        result = runner.invoke(
+            cli,
+            [
+                "tune",
+                "--agent",
+                str(mock_agent_file),
+                "--dataset",
+                str(mock_dataset_file),
+                "--output",
+                str(output_path),
+                "--selector",
+                "semantic",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Optimization complete" in result.output
+
+        # Verify Embedding Client init
+        assert MockEmbed.called
+
+        # Verify MiproOptimizer init with embedding provider
+        args, kwargs = MockMipro.call_args
+        # kwargs should contain embedding_provider
+        assert kwargs.get("embedding_provider") is not None
+        assert kwargs.get("embedding_provider") == MockEmbed.return_value
+
+        # Verify config update
+        config = args[2]
+        assert config.selector_type == "semantic"
+
+
+def test_tune_semantic_selector_client_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path) -> None:
+    with (
+        patch("coreason_optimizer.main.OpenAIClient"),
+        patch("coreason_optimizer.main.OpenAIEmbeddingClient", side_effect=Exception("Emb Fail")),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "tune",
+                "--agent",
+                str(mock_agent_file),
+                "--dataset",
+                str(mock_dataset_file),
+                "--selector",
+                "semantic",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "Failed to initialize OpenAI Embedding Client" in result.output

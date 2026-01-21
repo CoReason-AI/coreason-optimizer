@@ -14,9 +14,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from coreason_optimizer.core.config import OptimizerConfig
-from coreason_optimizer.core.interfaces import LLMResponse, UsageStats
+from coreason_optimizer.core.interfaces import (
+    EmbeddingProvider,
+    EmbeddingResponse,
+    LLMResponse,
+    UsageStats,
+)
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.strategies.mipro import MiproOptimizer
+from coreason_optimizer.strategies.selector import SemanticSelector
 
 
 class MockConstruct:
@@ -216,3 +222,39 @@ def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> N
         assert manifest.optimized_instruction == "Better Instruction"
         assert manifest.few_shot_examples == [ex1]
         assert manifest.performance_metric == 0.95
+
+
+def test_mipro_semantic_selector_integration(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+    """Test that MIPRO uses SemanticSelector when configured."""
+    config = OptimizerConfig(selector_type="semantic", embedding_model="emb-model")
+
+    mock_embedder = MagicMock(spec=EmbeddingProvider)
+    # Mock return value
+    mock_embedder.embed.return_value = EmbeddingResponse(embeddings=[[0.1, 0.2]], usage=UsageStats())
+
+    optimizer = MiproOptimizer(
+        mock_llm,
+        mock_metric,
+        config,
+        embedding_provider=mock_embedder,
+        num_instruction_candidates=1,
+        num_fewshot_combinations=1,
+    )
+
+    # Verify that the selector is SemanticSelector
+    assert isinstance(optimizer.selector, SemanticSelector)
+
+    # Run a simple compile to ensure flow works (no crash)
+    agent = MockConstruct()
+    trainset = [TrainingExample(inputs={"q": "1"}, reference="A")]
+
+    manifest = optimizer.compile(agent, trainset, [])
+    assert manifest.base_model == config.target_model
+
+
+def test_mipro_missing_embedding_provider(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+    """Test that MIPRO raises ValueError if semantic selector is requested but no provider is given."""
+    config = OptimizerConfig(selector_type="semantic")
+
+    with pytest.raises(ValueError, match="Embedding provider is required"):
+        MiproOptimizer(mock_llm, mock_metric, config)

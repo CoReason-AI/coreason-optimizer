@@ -8,6 +8,8 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -25,6 +27,14 @@ class OptimizerConfig(BaseModel):
     metric: str = Field(
         default="exact_match",
         description="The metric function identifier to use for evaluation.",
+    )
+    selector_type: Literal["random", "semantic"] = Field(
+        default="random",
+        description="The strategy to use for selecting few-shot examples.",
+    )
+    embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="The identifier of the embedding model (used if selector_type is semantic).",
     )
     max_bootstrapped_demos: int = Field(
         default=4,
