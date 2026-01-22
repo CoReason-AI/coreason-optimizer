@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from coreason_optimizer.core.interfaces import Construct
+from coreason_optimizer.core.interfaces import Construct, LLMResponse
 from coreason_optimizer.core.models import OptimizedManifest, TrainingExample
 from coreason_optimizer.main import cli
 
@@ -191,14 +191,6 @@ def test_evaluate_example_error(runner: CliRunner, mock_manifest_file: str, mock
         # Should finish but with 0 score (or partial)
         assert result.exit_code == 0
         assert "Evaluation Complete" in result.output
-        # Should have logged warning? output captures stdout/stderr.
-        # logger.warning might go to stderr.
-        # "Error evaluating example" is logged in warning.
-        # Since loguru logs to stderr by default, it might be in output?
-        # Typically cli runner captures stderr.
-        # Note: If logger is not configured to sink to stderr in tests, this might not show.
-        # But we are testing for coverage of the except block.
-        # If the code didn't crash, it means exception was caught.
 
 
 def test_tune_csv_dataset(runner: CliRunner, mock_agent_file: str, mock_dataset_csv: str) -> None:
@@ -252,3 +244,16 @@ def test_tune_options_overrides(runner: CliRunner, mock_agent_file: str, mock_da
                     assert config.target_model == "gpt-3.5"
                     assert config.max_rounds == 5
                     assert config.max_bootstrapped_demos == 2
+
+
+def test_evaluate_csv_dataset(runner: CliRunner, mock_manifest_file: str, mock_dataset_csv: str) -> None:
+    """Test evaluating with a CSV dataset (inferring schema from manifest)."""
+    with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
+        mock_client = MagicMock()
+        mock_client.generate.return_value = LLMResponse(content="a1", usage={}, cost_usd=0.0)
+        MockClient.return_value = mock_client
+
+        result = runner.invoke(cli, ["evaluate", "--manifest", mock_manifest_file, "--dataset", mock_dataset_csv])
+
+        assert result.exit_code == 0
+        assert "Evaluation Complete" in result.output
