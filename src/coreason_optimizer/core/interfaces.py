@@ -114,6 +114,32 @@ class LLMClient(Protocol):
 
 
 @runtime_checkable
+class AsyncLLMClient(Protocol):
+    """Protocol for a generic Async LLM client."""
+
+    async def generate(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """
+        Generate a response from the LLM asynchronously.
+
+        Args:
+            messages: A list of message dictionaries (role, content).
+            model: The model identifier to use.
+            temperature: Sampling temperature.
+            **kwargs: Additional provider-specific arguments.
+
+        Returns:
+            The LLM response containing content and usage stats.
+        """
+        ...  # pragma: no cover
+
+
+@runtime_checkable
 class Metric(Protocol):
     """Protocol for a scoring function."""
 
@@ -139,6 +165,24 @@ class EmbeddingProvider(Protocol):
     def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
         """
         Generate embeddings for a list of texts.
+
+        Args:
+            texts: List of strings to embed.
+            model: The embedding model to use.
+
+        Returns:
+            An EmbeddingResponse containing vectors and usage stats.
+        """
+        ...  # pragma: no cover
+
+
+@runtime_checkable
+class AsyncEmbeddingProvider(Protocol):
+    """Protocol for an async embedding provider."""
+
+    async def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+        """
+        Generate embeddings for a list of texts asynchronously.
 
         Args:
             texts: List of strings to embed.

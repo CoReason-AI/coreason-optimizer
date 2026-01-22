@@ -9,10 +9,10 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import OpenAI, OpenAIError
+from openai import AsyncOpenAI, OpenAIError
 
 from coreason_optimizer.core.client import OpenAIClient
 
@@ -34,7 +34,8 @@ def mock_openai_response() -> MagicMock:
 
 
 def test_stream_raises_error(mock_openai_response: MagicMock) -> None:
-    mock_client = MagicMock(spec=OpenAI)
+    # We now mock AsyncOpenAI because OpenAIClient uses OpenAIClientAsync internally
+    mock_client = AsyncMock(spec=AsyncOpenAI)
     client = OpenAIClient(client=mock_client)
 
     with pytest.raises(ValueError, match="Streaming is not supported"):
@@ -43,8 +44,13 @@ def test_stream_raises_error(mock_openai_response: MagicMock) -> None:
 
 def test_empty_content_handled(mock_openai_response: MagicMock) -> None:
     mock_openai_response.choices[0].message.content = None
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
+    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+
+    # Also need to mock close() because context manager might call it or we might need it if we used context manager
+    # OpenAIClient facade doesn't strictly need close() for generate(), but __exit__ does.
+    # Here we are just initializing and calling generate.
+
     client = OpenAIClient(client=mock_client)
 
     resp = client.generate([])
@@ -52,8 +58,9 @@ def test_empty_content_handled(mock_openai_response: MagicMock) -> None:
 
 
 def test_multiple_n_handled(mock_openai_response: MagicMock) -> None:
-    mock_client = MagicMock(spec=OpenAI)
-    mock_client.chat.completions.create.return_value = mock_openai_response
+    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+
     client = OpenAIClient(client=mock_client)
 
     # We pass n=2, response still has 1 choice mocked but usage reflects total.
@@ -65,5 +72,7 @@ def test_multiple_n_handled(mock_openai_response: MagicMock) -> None:
 def test_missing_api_key_raises_error() -> None:
     # Ensure environment is clean
     with patch.dict(os.environ, {}, clear=True):
+        # OpenAIClient now initializes OpenAIClientAsync which initializes AsyncOpenAI
+        # OpenAI 1.0+ checks for API key at instantiation
         with pytest.raises(OpenAIError):
             OpenAIClient()

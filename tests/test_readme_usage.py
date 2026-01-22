@@ -10,7 +10,7 @@
 
 from pathlib import Path
 from typing import cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -50,10 +50,10 @@ def test_readme_library_usage_flow(tmp_path: Path) -> None:
     )
 
     # 2. Initialize Components
-    # Mock OpenAIClient to avoid API calls and key errors
-    with patch("coreason_optimizer.core.client.OpenAI") as MockOpenAI:
-        mock_client_instance = MagicMock()
-        MockOpenAI.return_value = mock_client_instance
+    # Mock AsyncOpenAI because OpenAIClient uses it internally
+    with patch("coreason_optimizer.core.client.AsyncOpenAI") as MockAsyncOpenAI:
+        mock_client_instance = AsyncMock()
+        MockAsyncOpenAI.return_value = mock_client_instance
 
         # Mock generate response for Mipro diagnosis/eval
         mock_resp = MagicMock()
@@ -61,8 +61,20 @@ def test_readme_library_usage_flow(tmp_path: Path) -> None:
         mock_resp.usage.prompt_tokens = 10
         mock_resp.usage.completion_tokens = 10
         mock_resp.usage.total_tokens = 20
-        mock_client_instance.chat.completions.create.return_value.choices[0].message.content = "a1"
-        mock_client_instance.chat.completions.create.return_value.usage = mock_resp.usage
+
+        # Ensure create is async mock
+        mock_client_instance.chat.completions.create = AsyncMock()
+
+        # Setup return value of the async call
+        # The result of await create() should be the response object
+        mock_response_object = MagicMock()
+        mock_response_object.choices = [MagicMock(message=MagicMock(content="a1"))]
+        mock_response_object.usage = mock_resp.usage
+
+        mock_client_instance.chat.completions.create.return_value = mock_response_object
+
+        # Mock close
+        mock_client_instance.close = AsyncMock()
 
         client = OpenAIClient()
         metric = MetricFactory.get("exact_match")
@@ -91,7 +103,7 @@ def test_invalid_agent_protocol() -> None:
         system_prompt = "broken"
 
     config = OptimizerConfig()
-    with patch("coreason_optimizer.core.client.OpenAI"):
+    with patch("coreason_optimizer.core.client.AsyncOpenAI"):
         client = OpenAIClient()
         metric = MetricFactory.get("exact_match")
         optimizer = MiproOptimizer(client, metric, config)
@@ -117,7 +129,7 @@ def test_mipro_missing_embeddings_for_semantic() -> None:
     """Test error when semantic selector is requested but no embedding provider is given."""
     config = OptimizerConfig(selector_type="semantic")
 
-    with patch("coreason_optimizer.core.client.OpenAI"):
+    with patch("coreason_optimizer.core.client.AsyncOpenAI"):
         client = OpenAIClient()
         metric = MetricFactory.get("exact_match")
 
