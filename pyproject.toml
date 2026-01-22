@@ -31,6 +31,7 @@ pre-commit = "^3.7.1"
 pytest-cov = "^5.0.0"
 mkdocs = "^1.6.0"
 mkdocs-material = "^9.5.26"
+pytest-asyncio = "*"
 
 [build-system]
 requires = ["poetry-core"]
