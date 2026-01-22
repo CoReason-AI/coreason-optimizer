@@ -135,7 +135,9 @@ def tune(
         client = OpenAIClient()
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI Client: {e}")  # pragma: no cover
-        raise click.ClickException("Failed to initialize OpenAI Client. Check OPENAI_API_KEY.") from e  # pragma: no cover
+        raise click.ClickException(
+            "Failed to initialize OpenAI Client. Check OPENAI_API_KEY."
+        ) from e  # pragma: no cover
 
     # Metric
     try:
@@ -221,7 +223,9 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
     try:
         client = OpenAIClient()
     except Exception:
-        raise click.ClickException("Failed to initialize OpenAI Client. Check OPENAI_API_KEY.") from None  # pragma: no cover
+        raise click.ClickException(
+            "Failed to initialize OpenAI Client. Check OPENAI_API_KEY."
+        ) from None  # pragma: no cover
 
     try:
         metric_func = MetricFactory.get(metric)
