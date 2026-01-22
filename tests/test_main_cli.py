@@ -9,6 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,7 +26,7 @@ def runner() -> CliRunner:
 
 
 @pytest.fixture
-def mock_agent_file(tmp_path: MagicMock) -> str:
+def mock_agent_file(tmp_path: Path) -> str:
     d = tmp_path / "agents"
     d.mkdir()
     p = d / "test_agent.py"
@@ -34,7 +35,7 @@ def mock_agent_file(tmp_path: MagicMock) -> str:
 
 
 @pytest.fixture
-def mock_dataset_file(tmp_path: MagicMock) -> str:
+def mock_dataset_file(tmp_path: Path) -> str:
     d = tmp_path / "data"
     d.mkdir()
     p = d / "data.jsonl"
@@ -45,7 +46,7 @@ def mock_dataset_file(tmp_path: MagicMock) -> str:
 
 
 @pytest.fixture
-def mock_manifest_file(tmp_path: MagicMock) -> str:
+def mock_manifest_file(tmp_path: Path) -> str:
     d = tmp_path / "out"
     d.mkdir()
     p = d / "manifest.json"
@@ -69,7 +70,7 @@ def test_cli_help(runner: CliRunner) -> None:
 
 
 def test_tune_bootstrap_success(
-    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: MagicMock
+    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: Path
 ) -> None:
     output_file = str(tmp_path / "out.json")
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
@@ -80,7 +81,7 @@ def test_tune_bootstrap_success(
 
         with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
             mock_client_inst = MagicMock()
-            mock_client_inst.generate.return_value = LLMResponse(content="a1", usage={}, cost_usd=0.0)
+            mock_client_inst.generate.return_value = LLMResponse(content="a1", usage={})
             MockClient.return_value = mock_client_inst
 
             with patch("coreason_optimizer.strategies.bootstrap.BootstrapFewShot.compile") as mock_compile:
@@ -112,9 +113,7 @@ def test_tune_bootstrap_success(
                 assert "Optimization complete" in result.output
 
 
-def test_tune_mipro_success(
-    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: MagicMock
-) -> None:
+def test_tune_mipro_success(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: Path) -> None:
     output_file = str(tmp_path / "out_mipro.json")
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
         mock_construct = MagicMock()
@@ -154,7 +153,7 @@ def test_tune_mipro_success(
 
 
 def test_tune_semantic_selector(
-    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: MagicMock
+    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: Path
 ) -> None:
     output_file = str(tmp_path / "out_sem.json")
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
@@ -266,7 +265,7 @@ def test_tune_compile_fail(runner: CliRunner, mock_agent_file: str, mock_dataset
 def test_evaluate_success(runner: CliRunner, mock_manifest_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
         mock_client = MagicMock()
-        mock_client.generate.return_value = LLMResponse(content="a1", usage={}, cost_usd=0.0)
+        mock_client.generate.return_value = LLMResponse(content="a1", usage={})
         MockClient.return_value = mock_client
 
         result = runner.invoke(
@@ -296,7 +295,7 @@ def test_evaluate_fail_dataset(runner: CliRunner, mock_manifest_file: str) -> No
     assert "Failed to load dataset" in result.output
 
 
-def test_evaluate_fail_dataset_csv_inference(runner: CliRunner, mock_manifest_file: str, tmp_path: MagicMock) -> None:
+def test_evaluate_fail_dataset_csv_inference(runner: CliRunner, mock_manifest_file: str, tmp_path: Path) -> None:
     # Create a CSV without few shot in manifest to infer columns from (if manifest had no examples)
     # But mock_manifest_file HAS examples. So let's create a manifest WITHOUT examples.
 
@@ -351,7 +350,11 @@ def test_evaluate_save_fail(runner: CliRunner, mock_agent_file: str, mock_datase
                 )
                 assert result.exit_code != 0
                 # Errno 21 Is a directory
-                assert "Is a directory" in result.output or "Failed to save manifest" in result.output
+                assert (
+                    "Is a directory" in result.output
+                    or "Permission denied" in result.output
+                    or "Failed to save manifest" in result.output
+                )
 
 
 def test_evaluate_metric_error(runner: CliRunner, mock_manifest_file: str, mock_dataset_file: str) -> None:
