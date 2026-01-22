@@ -9,6 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,7 +26,7 @@ def runner() -> CliRunner:
 
 
 @pytest.fixture
-def mock_agent_file(tmp_path: MagicMock) -> str:
+def mock_agent_file(tmp_path: Path) -> str:
     d = tmp_path / "agents"
     d.mkdir()
     p = d / "test_agent.py"
@@ -34,7 +35,7 @@ def mock_agent_file(tmp_path: MagicMock) -> str:
 
 
 @pytest.fixture
-def mock_dataset_file(tmp_path: MagicMock) -> str:
+def mock_dataset_file(tmp_path: Path) -> str:
     d = tmp_path / "data"
     d.mkdir()
     p = d / "data.jsonl"
@@ -44,7 +45,7 @@ def mock_dataset_file(tmp_path: MagicMock) -> str:
 
 
 @pytest.fixture
-def mock_dataset_csv(tmp_path: MagicMock) -> str:
+def mock_dataset_csv(tmp_path: Path) -> str:
     d = tmp_path / "data"
     d.mkdir()
     p = d / "data.csv"
@@ -54,7 +55,7 @@ def mock_dataset_csv(tmp_path: MagicMock) -> str:
 
 
 @pytest.fixture
-def mock_manifest_file(tmp_path: MagicMock) -> str:
+def mock_manifest_file(tmp_path: Path) -> str:
     d = tmp_path / "out"
     d.mkdir()
     p = d / "manifest.json"
@@ -193,8 +194,9 @@ def test_evaluate_example_error(runner: CliRunner, mock_manifest_file: str, mock
         assert "Evaluation Complete" in result.output
 
 
-def test_tune_csv_dataset(runner: CliRunner, mock_agent_file: str, mock_dataset_csv: str) -> None:
+def test_tune_csv_dataset(runner: CliRunner, mock_agent_file: str, mock_dataset_csv: str, tmp_path: Path) -> None:
     """Test loading CSV dataset in tune."""
+    output_file = str(tmp_path / "out_csv.json")
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
         # Construct needs to define inputs
         construct = MagicMock(spec=Construct)
@@ -211,12 +213,17 @@ def test_tune_csv_dataset(runner: CliRunner, mock_agent_file: str, mock_dataset_
                     performance_metric=1,
                     optimization_run_id="1",
                 )
-                result = runner.invoke(cli, ["tune", "--agent", mock_agent_file, "--dataset", mock_dataset_csv])
+                result = runner.invoke(
+                    cli, ["tune", "--agent", mock_agent_file, "--dataset", mock_dataset_csv, "--output", output_file]
+                )
                 assert result.exit_code == 0
 
 
-def test_tune_options_overrides(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
+def test_tune_options_overrides(
+    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: Path
+) -> None:
     """Test overriding config options via CLI."""
+    output_file = str(tmp_path / "out_opts.json")
     with patch("coreason_optimizer.main.load_agent_from_path"):
         with patch("coreason_optimizer.main.OpenAIClient"):
             with patch("coreason_optimizer.strategies.mipro.MiproOptimizer.__init__", return_value=None) as mock_init:
@@ -236,6 +243,8 @@ def test_tune_options_overrides(runner: CliRunner, mock_agent_file: str, mock_da
                             "5",
                             "--demos",
                             "2",
+                            "--output",
+                            output_file,
                         ],
                     )
                     # Retrieve the config object passed to MiproOptimizer
@@ -250,7 +259,7 @@ def test_evaluate_csv_dataset(runner: CliRunner, mock_manifest_file: str, mock_d
     """Test evaluating with a CSV dataset (inferring schema from manifest)."""
     with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
         mock_client = MagicMock()
-        mock_client.generate.return_value = LLMResponse(content="a1", usage={}, cost_usd=0.0)
+        mock_client.generate.return_value = LLMResponse(content="a1", usage={})
         MockClient.return_value = mock_client
 
         result = runner.invoke(cli, ["evaluate", "--manifest", mock_manifest_file, "--dataset", mock_dataset_csv])

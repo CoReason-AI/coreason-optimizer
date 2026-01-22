@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from coreason_optimizer.core.budget import BudgetExceededError
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import Construct, LLMClient, LLMResponse
+from coreason_optimizer.utils.exceptions import BudgetExceededError
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.strategies.mipro import MiproOptimizer
 
