@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+from coreason_optimizer.core.interfaces import Construct
 from coreason_optimizer.core.models import OptimizedManifest, TrainingExample
 from coreason_optimizer.main import cli
 
@@ -39,6 +40,16 @@ def mock_dataset_file(tmp_path: MagicMock) -> str:
     p = d / "data.jsonl"
     with open(p, "w") as f:
         f.write(json.dumps({"input": "q1", "reference": "a1"}) + "\n")
+    return str(p)
+
+
+@pytest.fixture
+def mock_dataset_csv(tmp_path: MagicMock) -> str:
+    d = tmp_path / "data"
+    d.mkdir()
+    p = d / "data.csv"
+    with open(p, "w") as f:
+        f.write("input,reference\nq1,a1\n")
     return str(p)
 
 
@@ -165,3 +176,56 @@ def test_evaluate_dataset_load_error(runner: CliRunner, mock_manifest_file: str)
     result = runner.invoke(cli, ["evaluate", "--manifest", mock_manifest_file, "--dataset", "nonexistent.jsonl"])
     assert result.exit_code != 0
     assert "Failed to load dataset" in result.output
+
+
+def test_tune_csv_dataset(runner: CliRunner, mock_agent_file: str, mock_dataset_csv: str) -> None:
+    """Test loading CSV dataset in tune."""
+    with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
+        # Construct needs to define inputs
+        construct = MagicMock(spec=Construct)
+        construct.inputs = ["input"]
+        mock_load.return_value = construct
+
+        with patch("coreason_optimizer.main.OpenAIClient"):
+            with patch("coreason_optimizer.strategies.mipro.MiproOptimizer.compile") as mock_compile:
+                mock_compile.return_value = OptimizedManifest(
+                    agent_id="test",
+                    base_model="m",
+                    optimized_instruction="i",
+                    few_shot_examples=[],
+                    performance_metric=1,
+                    optimization_run_id="1",
+                )
+                result = runner.invoke(cli, ["tune", "--agent", mock_agent_file, "--dataset", mock_dataset_csv])
+                assert result.exit_code == 0
+
+
+def test_tune_options_overrides(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
+    """Test overriding config options via CLI."""
+    with patch("coreason_optimizer.main.load_agent_from_path"):
+        with patch("coreason_optimizer.main.OpenAIClient"):
+            with patch("coreason_optimizer.strategies.mipro.MiproOptimizer.__init__", return_value=None) as mock_init:
+                # We mock init to check config passed
+                with patch("coreason_optimizer.strategies.mipro.MiproOptimizer.compile"):
+                    runner.invoke(
+                        cli,
+                        [
+                            "tune",
+                            "--agent",
+                            mock_agent_file,
+                            "--dataset",
+                            mock_dataset_file,
+                            "--base-model",
+                            "gpt-3.5",
+                            "--epochs",
+                            "5",
+                            "--demos",
+                            "2",
+                        ],
+                    )
+                    # Retrieve the config object passed to MiproOptimizer
+                    args, kwargs = mock_init.call_args
+                    config = args[2]  # 3rd positional arg is config
+                    assert config.target_model == "gpt-3.5"
+                    assert config.max_rounds == 5
+                    assert config.max_bootstrapped_demos == 2
