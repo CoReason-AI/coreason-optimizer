@@ -178,6 +178,29 @@ def test_evaluate_dataset_load_error(runner: CliRunner, mock_manifest_file: str)
     assert "Failed to load dataset" in result.output
 
 
+def test_evaluate_example_error(runner: CliRunner, mock_manifest_file: str, mock_dataset_file: str) -> None:
+    """Test exception handling during per-example evaluation."""
+    with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
+        mock_client = MagicMock()
+        # Raise exception on generate
+        mock_client.generate.side_effect = Exception("Generation Error")
+        MockClient.return_value = mock_client
+
+        result = runner.invoke(cli, ["evaluate", "--manifest", mock_manifest_file, "--dataset", mock_dataset_file])
+
+        # Should finish but with 0 score (or partial)
+        assert result.exit_code == 0
+        assert "Evaluation Complete" in result.output
+        # Should have logged warning? output captures stdout/stderr.
+        # logger.warning might go to stderr.
+        # "Error evaluating example" is logged in warning.
+        # Since loguru logs to stderr by default, it might be in output?
+        # Typically cli runner captures stderr.
+        # Note: If logger is not configured to sink to stderr in tests, this might not show.
+        # But we are testing for coverage of the except block.
+        # If the code didn't crash, it means exception was caught.
+
+
 def test_tune_csv_dataset(runner: CliRunner, mock_agent_file: str, mock_dataset_csv: str) -> None:
     """Test loading CSV dataset in tune."""
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:

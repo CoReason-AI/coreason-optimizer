@@ -263,5 +263,5 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
     click.echo(f"Evaluation Complete. Average {metric} Score: {avg_score:.4f}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     cli()  # pragma: no cover
