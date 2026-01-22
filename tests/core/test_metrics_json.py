@@ -11,13 +11,13 @@
 from coreason_optimizer.core.metrics import JsonValidity
 
 
-def test_json_validity_simple():
+def test_json_validity_simple() -> None:
     metric = JsonValidity()
     assert metric('{"a": 1}', None) == 1.0
     assert metric("invalid", None) == 0.0
 
 
-def test_json_validity_markdown_explicit():
+def test_json_validity_markdown_explicit() -> None:
     metric = JsonValidity()
     # Explicit json block
     text = 'Here is the json:\n```json\n{"a": 1}\n```'
@@ -28,7 +28,7 @@ def test_json_validity_markdown_explicit():
     assert metric(text_bad, None) == 0.0
 
 
-def test_json_validity_markdown_generic():
+def test_json_validity_markdown_generic() -> None:
     metric = JsonValidity()
     # Generic block
     text = '```\n{"a": 1}\n```'
@@ -39,7 +39,7 @@ def test_json_validity_markdown_generic():
     assert metric(text_py, None) == 1.0
 
 
-def test_json_validity_multiple_blocks():
+def test_json_validity_multiple_blocks() -> None:
     metric = JsonValidity()
     # First valid wins
     text = '```json\n{"a": 1}\n```\nAnd another:\n```json\ninvalid\n```'

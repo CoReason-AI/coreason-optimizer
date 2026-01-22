@@ -14,14 +14,14 @@ from coreason_optimizer.core.budget import BudgetManager
 from coreason_optimizer.core.interfaces import UsageStats
 
 
-def test_budget_init_negative():
+def test_budget_init_negative() -> None:
     with pytest.raises(ValueError):
         BudgetManager(-1.0)
     with pytest.raises(ValueError):
         BudgetManager(0.0)
 
 
-def test_budget_consume_negative():
+def test_budget_consume_negative() -> None:
     manager = BudgetManager(10.0)
     stats = UsageStats(total_tokens=10, prompt_tokens=5, completion_tokens=5, cost_usd=-0.1)
     with pytest.raises(ValueError):
@@ -32,7 +32,7 @@ def test_budget_consume_negative():
         manager.consume(stats_bad_tokens)
 
 
-def test_budget_status_string():
+def test_budget_status_string() -> None:
     manager = BudgetManager(10.0)
     assert manager.get_status() == "Spent $0.0000 / $10.00 (0.0%)"
 

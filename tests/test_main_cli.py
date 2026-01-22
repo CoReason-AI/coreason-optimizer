@@ -20,12 +20,12 @@ from coreason_optimizer.main import cli
 
 
 @pytest.fixture
-def runner():
+def runner() -> CliRunner:
     return CliRunner()
 
 
 @pytest.fixture
-def mock_agent_file(tmp_path):
+def mock_agent_file(tmp_path: MagicMock) -> str:
     d = tmp_path / "agents"
     d.mkdir()
     p = d / "test_agent.py"
@@ -34,7 +34,7 @@ def mock_agent_file(tmp_path):
 
 
 @pytest.fixture
-def mock_dataset_file(tmp_path):
+def mock_dataset_file(tmp_path: MagicMock) -> str:
     d = tmp_path / "data"
     d.mkdir()
     p = d / "data.jsonl"
@@ -45,7 +45,7 @@ def mock_dataset_file(tmp_path):
 
 
 @pytest.fixture
-def mock_manifest_file(tmp_path):
+def mock_manifest_file(tmp_path: MagicMock) -> str:
     d = tmp_path / "out"
     d.mkdir()
     p = d / "manifest.json"
@@ -62,13 +62,15 @@ def mock_manifest_file(tmp_path):
     return str(p)
 
 
-def test_cli_help(runner):
+def test_cli_help(runner: CliRunner) -> None:
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "coreason-opt" in result.output
 
 
-def test_tune_bootstrap_success(runner, mock_agent_file, mock_dataset_file, tmp_path):
+def test_tune_bootstrap_success(
+    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: MagicMock
+) -> None:
     output_file = str(tmp_path / "out.json")
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
         mock_construct = MagicMock()
@@ -110,15 +112,17 @@ def test_tune_bootstrap_success(runner, mock_agent_file, mock_dataset_file, tmp_
                 assert "Optimization complete" in result.output
 
 
-def test_tune_mipro_success(runner, mock_agent_file, mock_dataset_file, tmp_path):
+def test_tune_mipro_success(
+    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: MagicMock
+) -> None:
     output_file = str(tmp_path / "out_mipro.json")
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
         mock_construct = MagicMock()
         mock_load.return_value = mock_construct
 
         with patch("coreason_optimizer.main.OpenAIClient"):
-            with patch("coreason_optimizer.main.OpenAIEmbeddingClient") as MockEmbed:  # semantic selector default?
-                # If selector is semantic, we need embedding client
+            # If selector is semantic, we need embedding client
+            with patch("coreason_optimizer.main.OpenAIEmbeddingClient"):
                 pass
 
             with patch("coreason_optimizer.strategies.mipro.MiproOptimizer.compile") as mock_compile:
@@ -149,7 +153,9 @@ def test_tune_mipro_success(runner, mock_agent_file, mock_dataset_file, tmp_path
                 assert result.exit_code == 0
 
 
-def test_tune_semantic_selector(runner, mock_agent_file, mock_dataset_file, tmp_path):
+def test_tune_semantic_selector(
+    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: MagicMock
+) -> None:
     output_file = str(tmp_path / "out_sem.json")
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
         mock_construct = MagicMock()
@@ -187,7 +193,7 @@ def test_tune_semantic_selector(runner, mock_agent_file, mock_dataset_file, tmp_
                     MockEmbed.assert_called_once()
 
 
-def test_tune_semantic_selector_fail_init(runner, mock_agent_file, mock_dataset_file):
+def test_tune_semantic_selector_fail_init(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.load_agent_from_path") as mock_load:
         mock_construct = MagicMock()
         mock_load.return_value = mock_construct
@@ -214,7 +220,7 @@ def test_tune_semantic_selector_fail_init(runner, mock_agent_file, mock_dataset_
                 assert "Failed to initialize OpenAI Embedding Client" in result.output
 
 
-def test_tune_fail_load_agent(runner, mock_agent_file, mock_dataset_file):
+def test_tune_fail_load_agent(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.load_agent_from_path", side_effect=Exception("Load Error")):
         result = runner.invoke(cli, ["tune", "--agent", mock_agent_file, "--dataset", mock_dataset_file])
         assert result.exit_code != 0
@@ -222,7 +228,7 @@ def test_tune_fail_load_agent(runner, mock_agent_file, mock_dataset_file):
         assert "Load Error" in result.output
 
 
-def test_tune_fail_dataset(runner, mock_agent_file):
+def test_tune_fail_dataset(runner: CliRunner, mock_agent_file: str) -> None:
     with patch("coreason_optimizer.main.load_agent_from_path"):
         result = runner.invoke(cli, ["tune", "--agent", mock_agent_file, "--dataset", "missing.jsonl"])
         assert result.exit_code != 0
@@ -231,14 +237,14 @@ def test_tune_fail_dataset(runner, mock_agent_file):
         assert "missing.jsonl" in result.output or "File not found" in result.output
 
 
-def test_tune_fail_dataset_invalid_ext(runner, mock_agent_file):
+def test_tune_fail_dataset_invalid_ext(runner: CliRunner, mock_agent_file: str) -> None:
     with patch("coreason_optimizer.main.load_agent_from_path"):
         result = runner.invoke(cli, ["tune", "--agent", mock_agent_file, "--dataset", "invalid.txt"])
         assert result.exit_code != 0
         assert "Unsupported file format" in result.output
 
 
-def test_tune_fail_client_init(runner, mock_agent_file, mock_dataset_file):
+def test_tune_fail_client_init(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.load_agent_from_path"):
         with patch("coreason_optimizer.main.OpenAIClient", side_effect=Exception("Auth Error")):
             result = runner.invoke(cli, ["tune", "--agent", mock_agent_file, "--dataset", mock_dataset_file])
@@ -246,7 +252,7 @@ def test_tune_fail_client_init(runner, mock_agent_file, mock_dataset_file):
             assert "Failed to initialize OpenAI Client" in result.output
 
 
-def test_tune_compile_fail(runner, mock_agent_file, mock_dataset_file):
+def test_tune_compile_fail(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.load_agent_from_path"):
         with patch("coreason_optimizer.main.OpenAIClient"):
             with patch(
@@ -257,7 +263,7 @@ def test_tune_compile_fail(runner, mock_agent_file, mock_dataset_file):
                 assert "Optimization failed" in result.output
 
 
-def test_evaluate_success(runner, mock_manifest_file, mock_dataset_file):
+def test_evaluate_success(runner: CliRunner, mock_manifest_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
         mock_client = MagicMock()
         mock_client.generate.return_value = LLMResponse(content="a1", usage={}, cost_usd=0.0)
@@ -278,19 +284,19 @@ def test_evaluate_success(runner, mock_manifest_file, mock_dataset_file):
         assert "Evaluation Complete" in result.output
 
 
-def test_evaluate_fail_manifest(runner):
+def test_evaluate_fail_manifest(runner: CliRunner) -> None:
     result = runner.invoke(cli, ["evaluate", "--manifest", "missing.json", "--dataset", "d.jsonl"])
     assert result.exit_code != 0
     assert "Failed to load manifest" in result.output
 
 
-def test_evaluate_fail_dataset(runner, mock_manifest_file):
+def test_evaluate_fail_dataset(runner: CliRunner, mock_manifest_file: str) -> None:
     result = runner.invoke(cli, ["evaluate", "--manifest", mock_manifest_file, "--dataset", "missing.jsonl"])
     assert result.exit_code != 0
     assert "Failed to load dataset" in result.output
 
 
-def test_evaluate_fail_dataset_csv_inference(runner, mock_manifest_file, tmp_path):
+def test_evaluate_fail_dataset_csv_inference(runner: CliRunner, mock_manifest_file: str, tmp_path: MagicMock) -> None:
     # Create a CSV without few shot in manifest to infer columns from (if manifest had no examples)
     # But mock_manifest_file HAS examples. So let's create a manifest WITHOUT examples.
 
@@ -315,7 +321,7 @@ def test_evaluate_fail_dataset_csv_inference(runner, mock_manifest_file, tmp_pat
     assert "Cannot infer CSV schema" in result.output
 
 
-def test_evaluate_save_fail(runner, mock_agent_file, mock_dataset_file):
+def test_evaluate_save_fail(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
     # Testing save failure in tune actually
     with patch("coreason_optimizer.main.load_agent_from_path"):
         with patch("coreason_optimizer.main.OpenAIClient"):
@@ -348,7 +354,7 @@ def test_evaluate_save_fail(runner, mock_agent_file, mock_dataset_file):
                 assert "Is a directory" in result.output or "Failed to save manifest" in result.output
 
 
-def test_evaluate_metric_error(runner, mock_manifest_file, mock_dataset_file):
+def test_evaluate_metric_error(runner: CliRunner, mock_manifest_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.OpenAIClient"):
         result = runner.invoke(
             cli, ["evaluate", "--manifest", mock_manifest_file, "--dataset", mock_dataset_file, "--metric", "unknown"]
@@ -357,7 +363,7 @@ def test_evaluate_metric_error(runner, mock_manifest_file, mock_dataset_file):
         assert "Unknown metric" in result.output
 
 
-def test_evaluate_client_init_fail(runner, mock_manifest_file, mock_dataset_file):
+def test_evaluate_client_init_fail(runner: CliRunner, mock_manifest_file: str, mock_dataset_file: str) -> None:
     with patch("coreason_optimizer.main.OpenAIClient", side_effect=Exception("Client Error")):
         result = runner.invoke(cli, ["evaluate", "--manifest", mock_manifest_file, "--dataset", mock_dataset_file])
         assert result.exit_code != 0

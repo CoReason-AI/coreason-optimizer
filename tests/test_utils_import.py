@@ -24,7 +24,7 @@ class MockAgent(Construct):
     outputs: list[str] = ["output"]
 
 
-def test_load_agent_from_path_success(tmp_path):
+def test_load_agent_from_path_success(tmp_path: MagicMock) -> None:
     """Test successful loading of an agent from a file."""
     # Create a temporary python file
     d = tmp_path / "agents"
@@ -40,14 +40,14 @@ def test_load_agent_from_path_success(tmp_path):
         # Set the agent attribute
         mock_module.agent = MockAgent()
 
-        with patch("importlib.util.module_from_spec", return_value=mock_module) as mock_module_from_spec:
+        with patch("importlib.util.module_from_spec", return_value=mock_module):
             with patch.object(sys, "modules", {}):  # Isolate sys.modules
                 agent = load_agent_from_path(str(p))
                 assert isinstance(agent, MockAgent)
                 assert agent.system_prompt == "System"
 
 
-def test_load_agent_from_path_with_variable(tmp_path):
+def test_load_agent_from_path_with_variable(tmp_path: MagicMock) -> None:
     """Test loading an agent with a specific variable name."""
     d = tmp_path / "agents"
     d.mkdir()
@@ -67,13 +67,13 @@ def test_load_agent_from_path_with_variable(tmp_path):
             assert isinstance(agent, MockAgent)
 
 
-def test_load_agent_file_not_found():
+def test_load_agent_file_not_found() -> None:
     """Test FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         load_agent_from_path("non_existent_file.py")
 
 
-def test_load_agent_module_spec_failure(tmp_path):
+def test_load_agent_module_spec_failure(tmp_path: MagicMock) -> None:
     """Test ImportError when spec cannot be loaded."""
     d = tmp_path / "agents"
     d.mkdir()
@@ -85,7 +85,7 @@ def test_load_agent_module_spec_failure(tmp_path):
             load_agent_from_path(str(p))
 
 
-def test_load_agent_execution_failure(tmp_path):
+def test_load_agent_execution_failure(tmp_path: MagicMock) -> None:
     """Test ImportError when module execution fails."""
     d = tmp_path / "agents"
     d.mkdir()
@@ -102,7 +102,7 @@ def test_load_agent_execution_failure(tmp_path):
                 load_agent_from_path(str(p))
 
 
-def test_load_agent_variable_not_found(tmp_path):
+def test_load_agent_variable_not_found(tmp_path: MagicMock) -> None:
     """Test AttributeError when variable is missing."""
     d = tmp_path / "agents"
     d.mkdir()
@@ -127,7 +127,7 @@ def test_load_agent_variable_not_found(tmp_path):
                 load_agent_from_path(str(p))
 
 
-def test_load_agent_protocol_mismatch(tmp_path):
+def test_load_agent_protocol_mismatch(tmp_path: MagicMock) -> None:
     """Test TypeError when object does not satisfy protocol."""
     d = tmp_path / "agents"
     d.mkdir()

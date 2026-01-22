@@ -20,24 +20,24 @@ from coreason_optimizer.strategies.mipro import MiproOptimizer
 
 
 @pytest.fixture
-def mock_client():
+def mock_client() -> MagicMock:
     client = MagicMock(spec=LLMClient)
     client.generate.return_value = LLMResponse(content="Response", usage={"total_tokens": 10}, cost_usd=0.001)
     return client
 
 
 @pytest.fixture
-def mock_metric():
+def mock_metric() -> MagicMock:
     return MagicMock(return_value=1.0)
 
 
 @pytest.fixture
-def config():
+def config() -> OptimizerConfig:
     return OptimizerConfig(target_model="gpt-4", meta_model="gpt-4")
 
 
 @pytest.fixture
-def agent():
+def agent() -> Construct:
     class Agent(Construct):
         system_prompt = "Sys"
         inputs = ["q"]
@@ -47,17 +47,23 @@ def agent():
 
 
 @pytest.fixture
-def trainset():
+def trainset() -> list[TrainingExample]:
     return [TrainingExample(inputs={"q": "q1"}, reference="a1")]
 
 
-def test_mipro_init_semantic_requires_embedding(mock_client, mock_metric):
+def test_mipro_init_semantic_requires_embedding(mock_client: MagicMock, mock_metric: MagicMock) -> None:
     conf = OptimizerConfig(selector_type="semantic")
     with pytest.raises(ValueError, match="Embedding provider is required"):
         MiproOptimizer(mock_client, mock_metric, conf)
 
 
-def test_mipro_diagnosis_budget_exceeded(mock_client, mock_metric, config, agent, trainset):
+def test_mipro_diagnosis_budget_exceeded(
+    mock_client: MagicMock,
+    mock_metric: MagicMock,
+    config: OptimizerConfig,
+    agent: Construct,
+    trainset: list[TrainingExample],
+) -> None:
     mock_client.generate.side_effect = BudgetExceededError("Budget")
     optimizer = MiproOptimizer(mock_client, mock_metric, config)
 
@@ -65,7 +71,13 @@ def test_mipro_diagnosis_budget_exceeded(mock_client, mock_metric, config, agent
         optimizer.compile(agent, trainset, [])
 
 
-def test_mipro_diagnosis_failure_logging(mock_client, mock_metric, config, agent, trainset):
+def test_mipro_diagnosis_failure_logging(
+    mock_client: MagicMock,
+    mock_metric: MagicMock,
+    config: OptimizerConfig,
+    agent: Construct,
+    trainset: list[TrainingExample],
+) -> None:
     # Simulate a generic error during diagnosis
     mock_client.generate.side_effect = Exception("API Error")
     optimizer = MiproOptimizer(mock_client, mock_metric, config)
@@ -80,38 +92,32 @@ def test_mipro_diagnosis_failure_logging(mock_client, mock_metric, config, agent
         assert manifest.optimized_instruction == "Sys"  # Default if nothing better found
 
 
-def test_mipro_candidate_generation_budget_exceeded(mock_client, mock_metric, config, agent, trainset):
+def test_mipro_candidate_generation_budget_exceeded(
+    mock_client: MagicMock,
+    mock_metric: MagicMock,
+    config: OptimizerConfig,
+    agent: Construct,
+    trainset: list[TrainingExample],
+) -> None:
     optimizer = MiproOptimizer(mock_client, mock_metric, config)
 
     # Diagnosis succeeds
     mock_client.generate.return_value = LLMResponse(content="wrong", usage={}, cost_usd=0.0)
     mock_metric.return_value = 0.0  # Force failure
 
-    # Mutator raises BudgetExceeded
-    # Note: mutator logic swallows Exception but re-raises BudgetExceededError.
-    # We need to make sure we are triggering the right exception in mutate.
-
-    with patch("coreason_optimizer.strategies.mipro.LLMInstructionMutator") as MockMutator:
-        mock_mutator_inst = MagicMock()
-        mock_mutator_inst.mutate.side_effect = BudgetExceededError("Budget")
-        MockMutator.return_value = mock_mutator_inst
-
-        # When `optimizer.mutator` is accessed, it uses the REAL LLMInstructionMutator if we don't mock the constructor call in Mipro.
-        # But Mipro __init__ creates `self.mutator`.
-        # So patching `coreason_optimizer.strategies.mipro.LLMInstructionMutator` helps only if Mipro init is called inside test OR we replace `optimizer.mutator`.
-
-        # In this test, we create optimizer BEFORE patching? No, we create it inside the patch context implicitly or explicitly.
-        # But here we created `optimizer` outside the patch. `self.mutator` is already set.
-        pass
-
-    # Let's manually replace the mutator on the instance
-    optimizer.mutator.mutate = MagicMock(side_effect=BudgetExceededError("Budget"))
-
-    with pytest.raises(BudgetExceededError):
-        optimizer.compile(agent, trainset, [])
+    # Let's manually replace the mutator on the instance using patch.object
+    with patch.object(optimizer.mutator, "mutate", side_effect=BudgetExceededError("Budget")):
+        with pytest.raises(BudgetExceededError):
+            optimizer.compile(agent, trainset, [])
 
 
-def test_mipro_candidate_generation_failure(mock_client, mock_metric, config, agent, trainset):
+def test_mipro_candidate_generation_failure(
+    mock_client: MagicMock,
+    mock_metric: MagicMock,
+    config: OptimizerConfig,
+    agent: Construct,
+    trainset: list[TrainingExample],
+) -> None:
     optimizer = MiproOptimizer(mock_client, mock_metric, config)
 
     # Diagnosis succeeds
@@ -119,40 +125,51 @@ def test_mipro_candidate_generation_failure(mock_client, mock_metric, config, ag
     mock_metric.return_value = 0.0
 
     # Mutator raises generic error
-    optimizer.mutator.mutate = MagicMock(side_effect=Exception("Mutator Error"))
+    with patch.object(optimizer.mutator, "mutate", side_effect=Exception("Mutator Error")):
+        # Should continue and use base instruction
+        manifest = optimizer.compile(agent, trainset, [])
+        assert manifest.optimized_instruction == "Sys"
 
-    # Should continue and use base instruction
-    manifest = optimizer.compile(agent, trainset, [])
-    assert manifest.optimized_instruction == "Sys"
 
-
-def test_mipro_grid_search_budget_exceeded(mock_client, mock_metric, config, agent, trainset):
+def test_mipro_grid_search_budget_exceeded(
+    mock_client: MagicMock,
+    mock_metric: MagicMock,
+    config: OptimizerConfig,
+    agent: Construct,
+    trainset: list[TrainingExample],
+) -> None:
     # Mock mutator to return 1 candidate
     optimizer = MiproOptimizer(mock_client, mock_metric, config)
-    optimizer.mutator.mutate = MagicMock(return_value="New Instr")
 
-    # Diagnosis succeeds
-    # We need to control the generate call.
-    # The FIRST calls are diagnosis (1 call per trainset example).
-    # Then mutation calls (controlled by mutator mock - we mocked mutate directly).
-    # Then grid search calls.
+    with patch.object(optimizer.mutator, "mutate", return_value="New Instr"):
+        # Diagnosis succeeds
+        # We need to control the generate call.
+        # The FIRST calls are diagnosis (1 call per trainset example).
+        # Then mutation calls (controlled by mutator mock - we mocked mutate directly).
+        # Then grid search calls.
 
-    call_count = 0
+        call_count = 0
 
-    def side_effect(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count > 1:  # Fail after diagnosis (on grid search eval)
-            raise BudgetExceededError("Budget")
-        return LLMResponse(content="resp", usage={}, cost_usd=0.0)
+        def side_effect(*args, **kwargs):  # type: ignore
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:  # Fail after diagnosis (on grid search eval)
+                raise BudgetExceededError("Budget")
+            return LLMResponse(content="resp", usage={}, cost_usd=0.0)
 
-    mock_client.generate.side_effect = side_effect
+        mock_client.generate.side_effect = side_effect
 
-    with pytest.raises(BudgetExceededError):
-        optimizer.compile(agent, trainset, [])
+        with pytest.raises(BudgetExceededError):
+            optimizer.compile(agent, trainset, [])
 
 
-def test_mipro_evaluate_candidate_generic_exception(mock_client, mock_metric, config, agent, trainset):
+def test_mipro_evaluate_candidate_generic_exception(
+    mock_client: MagicMock,
+    mock_metric: MagicMock,
+    config: OptimizerConfig,
+    agent: Construct,
+    trainset: list[TrainingExample],
+) -> None:
     optimizer = MiproOptimizer(mock_client, mock_metric, config)
 
     # Force evaluate_candidate to raise exception

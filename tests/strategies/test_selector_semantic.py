@@ -18,7 +18,7 @@ from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.selector import RandomSelector, SemanticSelector
 
 
-def test_random_selector_k_greater_than_len():
+def test_random_selector_k_greater_than_len() -> None:
     """Test behavior when k > dataset length."""
     examples = [TrainingExample(inputs={"q": i}, reference=i) for i in range(3)]
     ds = Dataset(examples)
@@ -28,7 +28,7 @@ def test_random_selector_k_greater_than_len():
     assert selected == examples
 
 
-def test_random_selector_subset():
+def test_random_selector_subset() -> None:
     """Test subset selection."""
     examples = [TrainingExample(inputs={"q": i}, reference=i) for i in range(10)]
     ds = Dataset(examples)
@@ -41,7 +41,7 @@ def test_random_selector_subset():
     assert selected == selected_2
 
 
-def test_semantic_selector_init():
+def test_semantic_selector_init() -> None:
     """Test initialization."""
     mock_provider = MagicMock(spec=EmbeddingProvider)
     selector = SemanticSelector(embedding_provider=mock_provider, embedding_model="test-model")
@@ -49,7 +49,7 @@ def test_semantic_selector_init():
     assert selector.embedding_model == "test-model"
 
 
-def test_semantic_selector_select_small_dataset():
+def test_semantic_selector_select_small_dataset() -> None:
     """Test selecting when dataset is smaller than k."""
     examples = [TrainingExample(inputs={"q": i}, reference=i) for i in range(2)]
     ds = Dataset(examples)
@@ -61,7 +61,7 @@ def test_semantic_selector_select_small_dataset():
     mock_provider.embed.assert_not_called()  # Should short-circuit
 
 
-def test_semantic_selector_clustering():
+def test_semantic_selector_clustering() -> None:
     """Test clustering logic."""
     examples = [TrainingExample(inputs={"q": i}, reference=i) for i in range(10)]
     ds = Dataset(examples)
@@ -77,10 +77,6 @@ def test_semantic_selector_clustering():
 
     mock_provider = MagicMock(spec=EmbeddingProvider)
     mock_provider.embed.return_value = mock_response
-
-    # We need to ensure that when KMeans() is instantiated, it returns our mock instance.
-    # The import in selector.py is `from sklearn.cluster import KMeans`.
-    # So we patch `coreason_optimizer.strategies.selector.KMeans`.
 
     with patch("coreason_optimizer.strategies.selector.KMeans") as MockKMeans:
         mock_kmeans_instance = MagicMock()
@@ -99,7 +95,7 @@ def test_semantic_selector_clustering():
         assert mock_kmeans_instance.fit.called
 
 
-def test_semantic_selector_backfill():
+def test_semantic_selector_backfill() -> None:
     """Test backfilling if clustering returns fewer unique points (unlikely but logic exists)."""
 
     examples = [TrainingExample(inputs={"q": i}, reference=i) for i in range(5)]
