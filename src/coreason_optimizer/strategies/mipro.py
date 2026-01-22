@@ -99,7 +99,7 @@ class MiproOptimizer(PromptOptimizer):
         else:
             self.selector = RandomSelector(seed=42)
 
-    def _evaluate_candidate(
+    async def _evaluate_candidate(
         self,
         instruction: str,
         examples: list[TrainingExample],
@@ -110,7 +110,7 @@ class MiproOptimizer(PromptOptimizer):
         for example in dataset:
             prompt = format_prompt(instruction, examples, example.inputs)
             try:
-                response = self.llm_client.generate(
+                response = await self.llm_client.generate(
                     messages=[{"role": "user", "content": prompt}],
                     model=self.config.target_model,
                     temperature=0.0,
@@ -125,7 +125,7 @@ class MiproOptimizer(PromptOptimizer):
 
         return total_score / len(dataset) if dataset else 0.0
 
-    def compile(
+    async def compile(
         self,
         agent: Construct,
         trainset: list[TrainingExample],
@@ -162,7 +162,7 @@ class MiproOptimizer(PromptOptimizer):
         for example in trainset:
             prompt = format_prompt(agent.system_prompt, [], example.inputs)
             try:
-                response = self.llm_client.generate(
+                response = await self.llm_client.generate(
                     messages=[{"role": "user", "content": prompt}],
                     model=self.config.target_model,
                     temperature=0.0,
@@ -185,7 +185,7 @@ class MiproOptimizer(PromptOptimizer):
 
         for i in range(self.num_instruction_candidates):
             try:
-                new_instruction = self.mutator.mutate(
+                new_instruction = await self.mutator.mutate(
                     current_instruction=agent.system_prompt,
                     failed_examples=failed_examples,
                 )
@@ -207,7 +207,7 @@ class MiproOptimizer(PromptOptimizer):
         for _ in range(self.num_fewshot_combinations):
             # Randomly select k examples (using max_bootstrapped_demos from config)
             k = self.config.max_bootstrapped_demos
-            selected = self.selector.select(dataset_obj, k=k)
+            selected = await self.selector.select(dataset_obj, k=k)
             example_sets.append(selected)
 
         # 4. Grid Search
@@ -225,7 +225,7 @@ class MiproOptimizer(PromptOptimizer):
                 # Evaluate on Trainset (Optimization Objective)
                 # In production, we might want to evaluate on a held-out 'dev' split of trainset
                 # to avoid overfitting, but for now we use the provided trainset.
-                score = self._evaluate_candidate(instr, ex_set, trainset)
+                score = await self._evaluate_candidate(instr, ex_set, trainset)
 
                 logger.debug(f"Candidate Score: {score:.4f}")
 
@@ -242,7 +242,7 @@ class MiproOptimizer(PromptOptimizer):
         final_metric = best_score
         if valset:
             logger.info("Evaluating best candidate on Validation Set...")
-            final_metric = self._evaluate_candidate(best_instruction, best_examples, valset)
+            final_metric = await self._evaluate_candidate(best_instruction, best_examples, valset)
             logger.info(f"Validation Score: {final_metric}")
 
         # 6. Create Manifest

@@ -10,6 +10,8 @@
 
 from typing import Any
 
+import pytest
+
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import LLMResponse, UsageStats
 from coreason_optimizer.core.metrics import ExactMatch
@@ -35,7 +37,7 @@ class MockLLMClient:
     def __init__(self) -> None:
         self.calls: list[Any] = []
 
-    def generate(
+    async def generate(
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
@@ -66,7 +68,7 @@ class FailingLLMClient:
     def __init__(self, fail_on_train: bool = True) -> None:
         self.fail_on_train = fail_on_train
 
-    def generate(
+    async def generate(
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
@@ -92,7 +94,8 @@ class FailingLLMClient:
         return LLMResponse(content="42", usage=UsageStats())
 
 
-def test_bootstrap_few_shot_compile() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_few_shot_compile() -> None:
     llm = MockLLMClient()
     metric = ExactMatch()
     config = OptimizerConfig(target_model="test-model", max_bootstrapped_demos=1)
@@ -107,7 +110,7 @@ def test_bootstrap_few_shot_compile() -> None:
         TrainingExample(inputs={"question": "5+5"}, reference="10"),
     ]
 
-    manifest = optimizer.compile(agent, trainset, valset)
+    manifest = await optimizer.compile(agent, trainset, valset)
 
     # 1. Verify successful traces mined
     assert len(manifest.few_shot_examples) == 1
@@ -122,20 +125,22 @@ def test_bootstrap_few_shot_compile() -> None:
     assert len(llm.calls) == 3
 
 
-def test_bootstrap_few_shot_empty_trainset() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_few_shot_empty_trainset() -> None:
     llm = MockLLMClient()
     metric = ExactMatch()
     config = OptimizerConfig()
     optimizer = BootstrapFewShot(llm_client=llm, metric=metric, config=config)
 
     agent = MockAgent()
-    manifest = optimizer.compile(agent, [], [])
+    manifest = await optimizer.compile(agent, [], [])
 
     assert len(manifest.few_shot_examples) == 0
     assert manifest.performance_metric == 0.0
 
 
-def test_bootstrap_limit_demos() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_limit_demos() -> None:
     """Test that max_bootstrapped_demos is respected."""
     llm = MockLLMClient()
     metric = ExactMatch()
@@ -150,12 +155,13 @@ def test_bootstrap_limit_demos() -> None:
         TrainingExample(inputs={"question": "2+2"}, reference="4"),
     ]
 
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
 
     assert len(manifest.few_shot_examples) == 1
 
 
-def test_bootstrap_llm_exception_mining() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_llm_exception_mining() -> None:
     """Test exception handling during mining."""
     # This client fails on training
     llm = FailingLLMClient(fail_on_train=True)
@@ -167,11 +173,12 @@ def test_bootstrap_llm_exception_mining() -> None:
     trainset = [TrainingExample(inputs={"q": "1"}, reference="1")]
 
     # Should not crash, just produce empty manifest
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
     assert len(manifest.few_shot_examples) == 0
 
 
-def test_bootstrap_llm_exception_validation() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_llm_exception_validation() -> None:
     """Test exception handling during validation."""
     # This client fails on validation
     llm = FailingLLMClient(fail_on_train=False)
@@ -183,7 +190,7 @@ def test_bootstrap_llm_exception_validation() -> None:
     trainset = [TrainingExample(inputs={"q": "1"}, reference="1")]
     valset = [TrainingExample(inputs={"q": "2"}, reference="2")]
 
-    manifest = optimizer.compile(agent, trainset, valset)
+    manifest = await optimizer.compile(agent, trainset, valset)
 
     # Should have 1 example, but score 0.0 because validation failed
     assert len(manifest.few_shot_examples) == 1

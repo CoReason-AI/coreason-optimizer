@@ -31,7 +31,7 @@ class BaseSelector(ABC):
     """Abstract base class for few-shot example selection strategies."""
 
     @abstractmethod
-    def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
+    async def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
         """
         Select k examples from the training set.
 
@@ -57,7 +57,7 @@ class RandomSelector(BaseSelector):
         """
         self.seed = seed
 
-    def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
+    async def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
         """
         Select k random examples.
 
@@ -103,7 +103,7 @@ class SemanticSelector(BaseSelector):
         self.seed = seed
         self.embedding_model = embedding_model
 
-    def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
+    async def select(self, trainset: Dataset, k: int = 4) -> list[TrainingExample]:
         """
         Select k diverse examples using clustering.
 
@@ -125,7 +125,7 @@ class SemanticSelector(BaseSelector):
             texts.append(text)
 
         # 2. Get embeddings
-        response = self.embedding_provider.embed(texts, model=self.embedding_model)
+        response = await self.embedding_provider.embed(texts, model=self.embedding_model)
         X = np.array(response.embeddings)
 
         # 3. K-Means Clustering

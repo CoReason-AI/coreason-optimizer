@@ -15,16 +15,18 @@ from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.selector import RandomSelector
 
 
-def test_select_k_zero() -> None:
+@pytest.mark.asyncio
+async def test_select_k_zero() -> None:
     ds = Dataset([TrainingExample(inputs={"a": 1}, reference=1)])
     sel = RandomSelector()
-    selected = sel.select(ds, k=0)
+    selected = await sel.select(ds, k=0)
     assert selected == []
 
 
-def test_select_k_negative() -> None:
+@pytest.mark.asyncio
+async def test_select_k_negative() -> None:
     ds = Dataset([TrainingExample(inputs={"a": 1}, reference=1)])
     sel = RandomSelector()
     # random.sample raises ValueError for negative k
     with pytest.raises(ValueError):
-        sel.select(ds, k=-1)
+        await sel.select(ds, k=-1)

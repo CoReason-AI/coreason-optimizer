@@ -18,9 +18,14 @@ supporting commands to tune agents and evaluate manifests.
 import json
 from pathlib import Path
 
+import anyio
 import click
 
-from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient
+from coreason_optimizer.core.client import (
+    OpenAIClient,
+    OpenAIClientAsync,
+    OpenAIEmbeddingClientAsync,
+)
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.interfaces import PromptOptimizer
@@ -129,40 +134,67 @@ def tune(
     if selector:
         config.selector_type = selector  # type: ignore
 
-    # Client
-    # Uses OPENAI_API_KEY env var
-    try:
-        client = OpenAIClient()
-    except Exception as e:
-        logger.error(f"Failed to initialize OpenAI Client: {e}")
-        raise click.ClickException("Failed to initialize OpenAI Client. Check OPENAI_API_KEY.") from e
-
     # Metric
     try:
         metric = MetricFactory.get(config.metric)
     except ValueError as e:
         raise click.ClickException(str(e)) from e
 
-    # Optimizer
-    optimizer: PromptOptimizer
-    if strategy == "bootstrap":
-        optimizer = BootstrapFewShot(client, metric, config)
-    else:
-        embedding_provider = None
-        if config.selector_type == "semantic":
-            # Initialize embedding provider
-            try:
-                embedding_provider = OpenAIEmbeddingClient()
-            except Exception as e:
-                logger.error(f"Failed to initialize OpenAI Embedding Client: {e}")
-                raise click.ClickException("Failed to initialize OpenAI Embedding Client. Check OPENAI_API_KEY.") from e
+    async def run_optimization() -> OptimizedManifest:
+        # Initialize Client separately to catch initialization errors (e.g. API Key missing)
+        try:
+            client_ctx = OpenAIClientAsync()
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenAI Client: {e}")
+            raise click.ClickException("Failed to initialize OpenAI Client. Check OPENAI_API_KEY.") from e
 
-        optimizer = MiproOptimizer(client, metric, config, embedding_provider=embedding_provider)
+        async with client_ctx as client:
+            # Optimizer
+            optimizer: PromptOptimizer
+            if strategy == "bootstrap":
+                optimizer = BootstrapFewShot(client, metric, config)
+            else:
+                embedding_provider = None
+                if config.selector_type == "semantic":
+                    # Initialize embedding provider
+                    try:
+                        # We need to manage lifecycle for this one too
+                        pass
+                    except Exception:
+                        pass
+
+                # Nested async context for embedding provider if needed
+                if config.selector_type == "semantic":
+                    try:
+                        embed_ctx = OpenAIEmbeddingClientAsync()
+                    except Exception as e:
+                        logger.error(f"Failed to initialize OpenAI Embedding Client: {e}")
+                        raise click.ClickException(
+                            "Failed to initialize OpenAI Embedding Client. Check OPENAI_API_KEY."
+                        ) from e
+
+                    async with embed_ctx as embedding_provider:
+                        optimizer = MiproOptimizer(
+                            client,
+                            metric,
+                            config,
+                            embedding_provider=embedding_provider,
+                        )
+                        return await optimizer.compile(construct, train_list, val_list)
+                else:
+                    optimizer = MiproOptimizer(client, metric, config, embedding_provider=None)
+                    return await optimizer.compile(construct, train_list, val_list)
+
+        # Should not reach here if logic covers all branches, but mypy might complain
+        raise click.ClickException("Optimization logic error: unreachable code reached.")
 
     # Run
     try:
-        manifest = optimizer.compile(construct, train_list, val_list)
+        manifest = anyio.run(run_optimization)
     except Exception as e:
+        # If it's already a ClickException (e.g. init failure), re-raise
+        if isinstance(e, click.ClickException):
+            raise
         logger.exception("Optimization failed")
         raise click.ClickException(f"Optimization failed: {e}") from e
 
@@ -217,6 +249,7 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
 
     # Setup Evaluation
     try:
+        # Use Facade (Sync) for evaluation script as it is simple sequential processing
         client = OpenAIClient()
     except Exception:
         raise click.ClickException("Failed to initialize OpenAI Client. Check OPENAI_API_KEY.") from None
@@ -242,6 +275,7 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
                 inputs=example.inputs,
             )
             try:
+                # Facade handles async loop internally
                 response = client.generate(
                     messages=[{"role": "user", "content": prompt}],
                     model=manifest_obj.base_model,

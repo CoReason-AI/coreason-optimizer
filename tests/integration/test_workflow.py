@@ -10,13 +10,16 @@
 
 from unittest.mock import Mock
 
+import pytest
+
 from coreason_optimizer.core.models import OptimizedManifest, TrainingExample
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.mutator import IdentityMutator
 from coreason_optimizer.strategies.selector import RandomSelector
 
 
-def test_optimization_workflow_simulation() -> None:
+@pytest.mark.asyncio
+async def test_optimization_workflow_simulation() -> None:
     """Simulate a simple optimization loop (without the actual Loop class)."""
 
     # 1. Load Data
@@ -31,7 +34,7 @@ def test_optimization_workflow_simulation() -> None:
 
     # 3. Select Few-Shot Examples (Strategy)
     selector = RandomSelector(seed=999)
-    few_shot_examples = selector.select(train_set, k=3)
+    few_shot_examples = await selector.select(train_set, k=3)
     assert len(few_shot_examples) == 3
 
     # 4. Mutate Instruction (Strategy)
@@ -41,7 +44,7 @@ def test_optimization_workflow_simulation() -> None:
     # Simulate finding failures in validation (mocked)
     failures = [TrainingExample(inputs={"q": "q_fail_1"}, reference="a_fail_1")]
 
-    optimized_instruction = mutator.mutate(current_instruction=base_instruction, failed_examples=failures)
+    optimized_instruction = await mutator.mutate(current_instruction=base_instruction, failed_examples=failures)
     assert optimized_instruction == base_instruction  # Identity mutator
 
     # 5. Create Manifest (Artifact)

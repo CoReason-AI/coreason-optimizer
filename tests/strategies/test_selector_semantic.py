@@ -9,9 +9,10 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
+import pytest
 
 from coreason_optimizer.core.interfaces import EmbeddingProvider, EmbeddingResponse, UsageStats
 from coreason_optimizer.core.models import TrainingExample
@@ -22,7 +23,7 @@ from coreason_optimizer.strategies.selector import SemanticSelector
 class MockEmbeddingProvider:
     """Mock provider returning deterministic embeddings."""
 
-    def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+    async def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
         results = []
         for text in texts:
             # Expect JSON format
@@ -39,7 +40,8 @@ class MockEmbeddingProvider:
         return EmbeddingResponse(embeddings=results, usage=UsageStats())
 
 
-def test_semantic_selector_clustering() -> None:
+@pytest.mark.asyncio
+async def test_semantic_selector_clustering() -> None:
     # Create examples that form distinct clusters
     # Cluster 1: 1, 1.1, 0.9 (Centroid approx 1.0)
     # Cluster 2: 10, 10.1, 9.9 (Centroid approx 10.0)
@@ -51,7 +53,7 @@ def test_semantic_selector_clustering() -> None:
     selector = SemanticSelector(embedding_provider=provider, seed=42)
 
     # Select k=2. Should pick one from each cluster (approx 1 and 10)
-    selected = selector.select(ds, k=2)
+    selected = await selector.select(ds, k=2)
 
     assert len(selected) == 2
 
@@ -65,18 +67,20 @@ def test_semantic_selector_clustering() -> None:
     assert has_high, f"Expected value near 10, got {sel_vals}"
 
 
-def test_semantic_selector_small_dataset() -> None:
+@pytest.mark.asyncio
+async def test_semantic_selector_small_dataset() -> None:
     examples = [TrainingExample(inputs={"q": "1"}, reference="1")]
     ds = Dataset(examples)
     provider = MockEmbeddingProvider()
     selector = SemanticSelector(provider)
 
-    selected = selector.select(ds, k=5)
+    selected = await selector.select(ds, k=5)
     assert len(selected) == 1
     assert selected[0].inputs["q"] == "1"
 
 
-def test_semantic_selector_fallback() -> None:
+@pytest.mark.asyncio
+async def test_semantic_selector_fallback() -> None:
     # Request k=3 from 2 examples -> should return 2
     vals = [1, 10]
     examples = [TrainingExample(inputs={"q": str(v)}, reference=str(v)) for v in vals]
@@ -84,11 +88,12 @@ def test_semantic_selector_fallback() -> None:
     provider = MockEmbeddingProvider()
     selector = SemanticSelector(provider)
 
-    selected = selector.select(ds, k=3)
+    selected = await selector.select(ds, k=3)
     assert len(selected) == 2
 
 
-def test_semantic_selector_fill_logic() -> None:
+@pytest.mark.asyncio
+async def test_semantic_selector_fill_logic() -> None:
     # Trigger fallback logic when we get fewer selected than k
     # We mock KMeans to simulate empty clusters
 
@@ -106,7 +111,7 @@ def test_semantic_selector_fill_logic() -> None:
         # Centers for 5 clusters (indices 0..4)
         instance.cluster_centers_ = np.zeros((5, 2))
 
-        selected = selector.select(ds, k=5)
+        selected = await selector.select(ds, k=5)
 
         assert len(selected) == 5
         # Verify uniqueness
@@ -114,7 +119,8 @@ def test_semantic_selector_fill_logic() -> None:
         assert len(set(inputs)) == 5
 
 
-def test_semantic_selector_edge_cases() -> None:
+@pytest.mark.asyncio
+async def test_semantic_selector_edge_cases() -> None:
     # Test handling of duplicate examples
 
     ex1 = TrainingExample(inputs={"q": "A"}, reference="A")
@@ -126,8 +132,8 @@ def test_semantic_selector_edge_cases() -> None:
     ds = Dataset(examples)
 
     # Mock provider
-    class EdgeMockProvider(EmbeddingProvider):
-        def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+    class EdgeMockProvider:
+        async def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
             res = []
             for t in texts:
                 # "q": "A" in json
@@ -140,21 +146,22 @@ def test_semantic_selector_edge_cases() -> None:
     selector = SemanticSelector(embedding_provider=EdgeMockProvider(), seed=42)
 
     # Select k=2. Should pick one A and one B.
-    selected = selector.select(ds, k=2)
+    selected = await selector.select(ds, k=2)
     assert len(selected) == 2
     inputs = sorted([ex.inputs["q"] for ex in selected])
     assert inputs == ["A", "B"]
 
     # Select k=3. Should pick A, B, and fill 3rd
-    selected = selector.select(ds, k=3)
+    selected = await selector.select(ds, k=3)
     assert len(selected) == 3
     inputs = sorted([ex.inputs["q"] for ex in selected])
     assert inputs == ["A", "A", "B"]
 
 
-def test_semantic_selector_respects_model() -> None:
+@pytest.mark.asyncio
+async def test_semantic_selector_respects_model() -> None:
     """Test that SemanticSelector passes the configured model to the provider."""
-    mock_provider = MagicMock(spec=EmbeddingProvider)
+    mock_provider = AsyncMock(spec=EmbeddingProvider)
     mock_provider.embed.return_value = EmbeddingResponse(embeddings=[[0.1, 0.1], [0.2, 0.2]], usage=UsageStats())
 
     model_name = "test-embedding-v2"
@@ -166,7 +173,7 @@ def test_semantic_selector_respects_model() -> None:
             TrainingExample(inputs={"q": "2"}, reference="B"),
         ]
     )
-    selector.select(ds, k=1)
+    await selector.select(ds, k=1)
 
     mock_provider.embed.assert_called_once()
     args, kwargs = mock_provider.embed.call_args

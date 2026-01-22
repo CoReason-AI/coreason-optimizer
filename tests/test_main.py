@@ -10,7 +10,8 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -76,16 +77,24 @@ def test_tune_command_success(
 ) -> None:
     output_path = tmp_path / "out.json"
 
-    with patch("coreason_optimizer.main.OpenAIClient"), patch("coreason_optimizer.main.MiproOptimizer") as MockMipro:
+    # Patch Async clients
+    with (
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClient,
+        patch("coreason_optimizer.main.MiproOptimizer") as MockMipro,
+    ):
+        MockClient.return_value.__aenter__.return_value = AsyncMock()
+
         # Setup mock return for compile
         mock_instance = MockMipro.return_value
-        mock_instance.compile.return_value = OptimizedManifest(
-            agent_id="test",
-            base_model="gpt-4o",
-            optimized_instruction="new_sys",
-            few_shot_examples=[],
-            performance_metric=0.9,
-            optimization_run_id="run_1",
+        mock_instance.compile = AsyncMock(
+            return_value=OptimizedManifest(
+                agent_id="test",
+                base_model="gpt-4o",
+                optimized_instruction="new_sys",
+                few_shot_examples=[],
+                performance_metric=0.9,
+                optimization_run_id="run_1",
+            )
         )
 
         result = runner.invoke(
@@ -125,19 +134,29 @@ def test_tune_command_bootstrap(
     runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path, tmp_path: Path
 ) -> None:
     output = tmp_path / "bootstrap.json"
+    # Use side_effect to ensure coroutine returns value
+    manifest = OptimizedManifest(
+        agent_id="test",
+        base_model="gpt-4o",
+        optimized_instruction="sys",
+        few_shot_examples=[],
+        performance_metric=0.8,
+        optimization_run_id="run_2",
+    )
+
+    async def return_manifest(*args: Any, **kwargs: Any) -> OptimizedManifest:
+        return manifest
+
     with (
-        patch("coreason_optimizer.main.OpenAIClient"),
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClient,
         patch("coreason_optimizer.main.BootstrapFewShot") as MockBootstrap,
     ):
-        mock_instance = MockBootstrap.return_value
-        mock_instance.compile.return_value = OptimizedManifest(
-            agent_id="test",
-            base_model="gpt-4o",
-            optimized_instruction="sys",
-            few_shot_examples=[],
-            performance_metric=0.8,
-            optimization_run_id="run_2",
-        )
+        MockClient.return_value.__aenter__.return_value = AsyncMock()
+
+        # Explicitly create the mock instance
+        mock_instance = MagicMock()
+        mock_instance.compile.side_effect = return_manifest
+        MockBootstrap.return_value = mock_instance
 
         result = runner.invoke(
             cli,
@@ -173,7 +192,8 @@ def test_tune_dataset_not_found(runner: CliRunner, mock_agent_file: Path) -> Non
 
 
 def test_tune_openai_client_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path) -> None:
-    with patch("coreason_optimizer.main.OpenAIClient", side_effect=Exception("API Key missing")):
+    # Exception happens during init or context enter
+    with patch("coreason_optimizer.main.OpenAIClientAsync", side_effect=Exception("API Key missing")):
         result = runner.invoke(
             cli,
             ["tune", "--agent", str(mock_agent_file), "--dataset", str(mock_dataset_file)],
@@ -185,7 +205,7 @@ def test_tune_openai_client_fail(runner: CliRunner, mock_agent_file: Path, mock_
 def test_tune_metric_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path) -> None:
     # Need to mock Config default metric or override it
     with (
-        patch("coreason_optimizer.main.OpenAIClient"),
+        patch("coreason_optimizer.main.OpenAIClientAsync"),
         patch("coreason_optimizer.main.MetricFactory.get", side_effect=ValueError("Unknown metric")),
     ):
         result = runner.invoke(
@@ -197,8 +217,12 @@ def test_tune_metric_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset
 
 
 def test_tune_compile_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path) -> None:
-    with patch("coreason_optimizer.main.OpenAIClient"), patch("coreason_optimizer.main.MiproOptimizer") as MockOpt:
-        MockOpt.return_value.compile.side_effect = Exception("Compile error")
+    with (
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClient,
+        patch("coreason_optimizer.main.MiproOptimizer") as MockOpt,
+    ):
+        MockClient.return_value.__aenter__.return_value = AsyncMock()
+        MockOpt.return_value.compile = AsyncMock(side_effect=Exception("Compile error"))
 
         result = runner.invoke(
             cli,
@@ -213,14 +237,20 @@ def test_tune_save_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset_f
     out_dir = tmp_path / "out_dir"
     out_dir.mkdir()
 
-    with patch("coreason_optimizer.main.OpenAIClient"), patch("coreason_optimizer.main.MiproOptimizer") as MockOpt:
-        MockOpt.return_value.compile.return_value = OptimizedManifest(
-            agent_id="t",
-            base_model="m",
-            optimized_instruction="i",
-            few_shot_examples=[],
-            performance_metric=0,
-            optimization_run_id="id",
+    with (
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClient,
+        patch("coreason_optimizer.main.MiproOptimizer") as MockOpt,
+    ):
+        MockClient.return_value.__aenter__.return_value = AsyncMock()
+        MockOpt.return_value.compile = AsyncMock(
+            return_value=OptimizedManifest(
+                agent_id="t",
+                base_model="m",
+                optimized_instruction="i",
+                few_shot_examples=[],
+                performance_metric=0,
+                optimization_run_id="id",
+            )
         )
 
         result = runner.invoke(
@@ -368,18 +398,23 @@ def test_tune_semantic_selector(
     output_path = tmp_path / "out_semantic.json"
 
     with (
-        patch("coreason_optimizer.main.OpenAIClient"),
-        patch("coreason_optimizer.main.OpenAIEmbeddingClient") as MockEmbed,
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClient,
+        patch("coreason_optimizer.main.OpenAIEmbeddingClientAsync") as MockEmbed,
         patch("coreason_optimizer.main.MiproOptimizer") as MockMipro,
     ):
+        MockClient.return_value.__aenter__.return_value = AsyncMock()
+        MockEmbed.return_value.__aenter__.return_value = AsyncMock()
+
         mock_instance = MockMipro.return_value
-        mock_instance.compile.return_value = OptimizedManifest(
-            agent_id="test",
-            base_model="gpt-4o",
-            optimized_instruction="new_sys",
-            few_shot_examples=[],
-            performance_metric=0.9,
-            optimization_run_id="run_1",
+        mock_instance.compile = AsyncMock(
+            return_value=OptimizedManifest(
+                agent_id="test",
+                base_model="gpt-4o",
+                optimized_instruction="new_sys",
+                few_shot_examples=[],
+                performance_metric=0.9,
+                optimization_run_id="run_1",
+            )
         )
 
         result = runner.invoke(
@@ -407,7 +442,8 @@ def test_tune_semantic_selector(
         args, kwargs = MockMipro.call_args
         # kwargs should contain embedding_provider
         assert kwargs.get("embedding_provider") is not None
-        assert kwargs.get("embedding_provider") == MockEmbed.return_value
+        # It should be the return value of __aenter__
+        assert kwargs.get("embedding_provider") == MockEmbed.return_value.__aenter__.return_value
 
         # Verify config update
         config = args[2]
@@ -416,8 +452,8 @@ def test_tune_semantic_selector(
 
 def test_tune_semantic_selector_client_fail(runner: CliRunner, mock_agent_file: Path, mock_dataset_file: Path) -> None:
     with (
-        patch("coreason_optimizer.main.OpenAIClient"),
-        patch("coreason_optimizer.main.OpenAIEmbeddingClient", side_effect=Exception("Emb Fail")),
+        patch("coreason_optimizer.main.OpenAIClientAsync"),
+        patch("coreason_optimizer.main.OpenAIEmbeddingClientAsync", side_effect=Exception("Emb Fail")),
     ):
         result = runner.invoke(
             cli,

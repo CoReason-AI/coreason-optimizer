@@ -10,6 +10,8 @@
 
 from typing import Any
 
+import pytest
+
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import LLMResponse, UsageStats
 from coreason_optimizer.core.metrics import ExactMatch
@@ -38,7 +40,7 @@ class ComplexMockLLMClient:
     def __init__(self) -> None:
         self.calls: list[Any] = []
 
-    def generate(
+    async def generate(
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
@@ -66,7 +68,8 @@ class ComplexMockLLMClient:
         return LLMResponse(content="unknown", usage=UsageStats())
 
 
-def test_bootstrap_non_string_inputs() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_non_string_inputs() -> None:
     """Test that integer/float inputs are correctly formatted and processed."""
     llm = ComplexMockLLMClient()
     metric = ExactMatch()
@@ -79,13 +82,14 @@ def test_bootstrap_non_string_inputs() -> None:
         TrainingExample(inputs={"count": 42}, reference="valid"),
     ]
 
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
 
     assert len(manifest.few_shot_examples) == 1
     assert manifest.few_shot_examples[0].inputs["count"] == 42
 
 
-def test_bootstrap_list_reference() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_list_reference() -> None:
     """Test that mining works when reference is a list of valid options."""
     llm = ComplexMockLLMClient()
     metric = ExactMatch()
@@ -98,14 +102,15 @@ def test_bootstrap_list_reference() -> None:
         TrainingExample(inputs={"q": "color"}, reference=["red", "blue"]),
     ]
 
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
 
     # LLM returns "red", which matches one of the options
     assert len(manifest.few_shot_examples) == 1
     assert manifest.few_shot_examples[0].reference == ["red", "blue"]
 
 
-def test_bootstrap_multiline_system_prompt() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_multiline_system_prompt() -> None:
     """Test that multiline system prompts are handled correctly."""
     llm = ComplexMockLLMClient()
     metric = ExactMatch()
@@ -117,18 +122,19 @@ def test_bootstrap_multiline_system_prompt() -> None:
         TrainingExample(inputs={"q": "multi"}, reference="yes"),
     ]
 
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
 
     assert len(manifest.few_shot_examples) == 1
     assert manifest.optimized_instruction == "Line 1\nLine 2"
 
 
-def test_bootstrap_duplicate_mining() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_duplicate_mining() -> None:
     """Test behavior when multiple identical examples succeed."""
 
     # We use a simple client for this
     class EchoLLMClient:
-        def generate(
+        async def generate(
             self,
             messages: list[dict[str, str]],
             model: str | None = None,
@@ -149,7 +155,7 @@ def test_bootstrap_duplicate_mining() -> None:
         TrainingExample(inputs={"q": "2+2"}, reference="4"),
     ]
 
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
 
     # Current implementation does not deduplicate, so we expect 2
     assert len(manifest.few_shot_examples) == 2

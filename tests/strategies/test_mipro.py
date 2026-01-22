@@ -9,7 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -34,7 +34,7 @@ class MockConstruct:
 
 @pytest.fixture
 def mock_llm() -> MagicMock:
-    llm = MagicMock()
+    llm = AsyncMock()
     # Default response
     llm.generate.return_value = LLMResponse(content="default response", usage=UsageStats())
     return llm
@@ -49,7 +49,8 @@ def mock_metric() -> MagicMock:
     return MagicMock(side_effect=metric_fn)
 
 
-def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
     """Test the complete MIPRO flow."""
     config = OptimizerConfig(target_model="test-model", meta_model="meta-model", max_bootstrapped_demos=2)
 
@@ -65,7 +66,7 @@ def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> No
 
     # 2. Setup LLM Behavior
 
-    def side_effect(messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> LLMResponse:
+    async def side_effect(messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> LLMResponse:
         content = messages[0]["content"]
 
         # Meta-LLM Mutation Call
@@ -89,7 +90,7 @@ def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> No
     # Reduce candidates for speed in tests
     optimizer = MiproOptimizer(mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1)
 
-    manifest = optimizer.compile(agent, trainset, valset)
+    manifest = await optimizer.compile(agent, trainset, valset)
 
     # 4. Assertions
     assert manifest.optimized_instruction == "Mutated Instruction"
@@ -100,7 +101,8 @@ def test_mipro_optimizer_flow(mock_llm: MagicMock, mock_metric: MagicMock) -> No
     assert len(meta_calls) >= 1
 
 
-def test_mipro_optimizer_no_failures(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_mipro_optimizer_no_failures(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
     """Test MIPRO when baseline is perfect (no failures)."""
     config = OptimizerConfig()
 
@@ -112,14 +114,15 @@ def test_mipro_optimizer_no_failures(mock_llm: MagicMock, mock_metric: MagicMock
 
     optimizer = MiproOptimizer(mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1)
 
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
 
     # Should keep original instruction
     assert manifest.optimized_instruction == agent.system_prompt
     assert manifest.performance_metric == 1.0
 
 
-def test_mipro_optimizer_resilience(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_mipro_optimizer_resilience(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
     """Test that MIPRO continues despite errors in LLM calls and Mutator."""
     config = OptimizerConfig(target_model="tgt", meta_model="meta")
     trainset = [TrainingExample(inputs={"q": "1"}, reference="A")]
@@ -132,13 +135,13 @@ def test_mipro_optimizer_resilience(mock_llm: MagicMock, mock_metric: MagicMock)
     # We use patch to mock the Mutator class used inside MiproOptimizer
     with patch("coreason_optimizer.strategies.mipro.LLMInstructionMutator") as MockMutatorClass:
         mock_mutator_instance = MockMutatorClass.return_value
-        mock_mutator_instance.mutate.side_effect = Exception("Mutator Error")
+        mock_mutator_instance.mutate = AsyncMock(side_effect=Exception("Mutator Error"))  # Make it async mock
 
         optimizer = MiproOptimizer(
             mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1
         )
 
-        manifest = optimizer.compile(agent, trainset, [])
+        manifest = await optimizer.compile(agent, trainset, [])
 
         # Should survive all errors
         assert manifest.optimized_instruction == agent.system_prompt
@@ -147,7 +150,8 @@ def test_mipro_optimizer_resilience(mock_llm: MagicMock, mock_metric: MagicMock)
         assert manifest.performance_metric == 0.0
 
 
-def test_mipro_empty_trainset(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_mipro_empty_trainset(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
     """Test behavior with empty training set."""
     config = OptimizerConfig()
     agent = MockConstruct()
@@ -155,14 +159,15 @@ def test_mipro_empty_trainset(mock_llm: MagicMock, mock_metric: MagicMock) -> No
     optimizer = MiproOptimizer(mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1)
 
     # Empty trainset
-    manifest = optimizer.compile(agent, [], [])
+    manifest = await optimizer.compile(agent, [], [])
 
     assert manifest.optimized_instruction == agent.system_prompt
     assert manifest.few_shot_examples == []
     assert manifest.performance_metric == 0.0
 
 
-def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
     """Test that the optimizer selects the best combination from multiple candidates."""
     config = OptimizerConfig(target_model="tgt", meta_model="meta-model")
     agent = MockConstruct()
@@ -181,7 +186,9 @@ def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> N
     mock_metric.side_effect = score_parser
 
     # LLM logic
-    def complex_side_effect(messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> LLMResponse:
+    async def complex_side_effect(
+        messages: list[dict[str, str]], model: str | None = None, **kwargs: Any
+    ) -> LLMResponse:
         content = messages[0]["content"]
 
         # Mutation
@@ -212,24 +219,25 @@ def test_mipro_complex_scoring(mock_llm: MagicMock, mock_metric: MagicMock) -> N
     # Patch Selector to always return [ex1]
     with patch("coreason_optimizer.strategies.mipro.RandomSelector") as MockSelectorClass:
         mock_selector = MockSelectorClass.return_value
-        mock_selector.select.return_value = [ex1]
+        mock_selector.select = AsyncMock(return_value=[ex1])
 
         optimizer = MiproOptimizer(
             mock_llm, mock_metric, config, num_instruction_candidates=1, num_fewshot_combinations=1
         )
 
-        manifest = optimizer.compile(agent, trainset, [])
+        manifest = await optimizer.compile(agent, trainset, [])
 
         assert manifest.optimized_instruction == "Better Instruction"
         assert manifest.few_shot_examples == [ex1]
         assert manifest.performance_metric == 0.95
 
 
-def test_mipro_semantic_selector_integration(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_mipro_semantic_selector_integration(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
     """Test that MIPRO uses SemanticSelector when configured."""
     config = OptimizerConfig(selector_type="semantic", embedding_model="emb-model")
 
-    mock_embedder = MagicMock(spec=EmbeddingProvider)
+    mock_embedder = AsyncMock(spec=EmbeddingProvider)
     # Mock return value
     mock_embedder.embed.return_value = EmbeddingResponse(embeddings=[[0.1, 0.2]], usage=UsageStats())
 
@@ -249,7 +257,7 @@ def test_mipro_semantic_selector_integration(mock_llm: MagicMock, mock_metric: M
     agent = MockConstruct()
     trainset = [TrainingExample(inputs={"q": "1"}, reference="A")]
 
-    manifest = optimizer.compile(agent, trainset, [])
+    manifest = await optimizer.compile(agent, trainset, [])
     assert manifest.base_model == config.target_model
 
 
@@ -261,7 +269,8 @@ def test_mipro_missing_embedding_provider(mock_llm: MagicMock, mock_metric: Magi
         MiproOptimizer(mock_llm, mock_metric, config)
 
 
-def test_mipro_semantic_budget_exceeded(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_mipro_semantic_budget_exceeded(mock_llm: MagicMock, mock_metric: MagicMock) -> None:
     """Test that BudgetExceededError propagates during semantic selection."""
     # Set a very low budget
     config = OptimizerConfig(
@@ -272,7 +281,7 @@ def test_mipro_semantic_budget_exceeded(mock_llm: MagicMock, mock_metric: MagicM
     )
 
     # Mock Embedder that consumes budget
-    mock_embedder = MagicMock(spec=EmbeddingProvider)
+    mock_embedder = AsyncMock(spec=EmbeddingProvider)
     # The UsageStats cost should exceed budget
     mock_embedder.embed.return_value = EmbeddingResponse(embeddings=[[0.1], [0.1]], usage=UsageStats(cost_usd=1.0))
 
@@ -293,4 +302,4 @@ def test_mipro_semantic_budget_exceeded(mock_llm: MagicMock, mock_metric: MagicM
 
     # Should raise BudgetExceededError when selecting examples
     with pytest.raises(BudgetExceededError):
-        optimizer.compile(agent, trainset, [])
+        await optimizer.compile(agent, trainset, [])

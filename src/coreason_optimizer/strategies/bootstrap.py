@@ -64,7 +64,7 @@ class BootstrapFewShot(PromptOptimizer):
         self.budget_manager = BudgetManager(config.budget_limit_usd)
         self.llm_client = BudgetAwareLLMClient(llm_client, self.budget_manager)
 
-    def compile(
+    async def compile(
         self,
         agent: Construct,
         trainset: list[TrainingExample],
@@ -103,7 +103,7 @@ class BootstrapFewShot(PromptOptimizer):
 
             # 2. Generate
             try:
-                response = self.llm_client.generate(
+                response = await self.llm_client.generate(
                     messages=[{"role": "user", "content": prompt}],
                     model=self.config.target_model,
                     temperature=0.0,  # Deterministic for mining
@@ -144,7 +144,7 @@ class BootstrapFewShot(PromptOptimizer):
                     inputs=example.inputs,
                 )
                 try:
-                    response = self.llm_client.generate(
+                    response = await self.llm_client.generate(
                         messages=[{"role": "user", "content": prompt}],
                         model=self.config.target_model,
                         temperature=0.0,

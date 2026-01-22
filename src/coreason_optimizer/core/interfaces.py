@@ -91,6 +91,32 @@ class Construct(Protocol):
 class LLMClient(Protocol):
     """Protocol for a generic LLM client."""
 
+    async def generate(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """
+        Generate a response from the LLM asynchronously.
+
+        Args:
+            messages: A list of message dictionaries (role, content).
+            model: The model identifier to use.
+            temperature: Sampling temperature.
+            **kwargs: Additional provider-specific arguments.
+
+        Returns:
+            The LLM response containing content and usage stats.
+        """
+        ...  # pragma: no cover
+
+
+@runtime_checkable
+class SyncLLMClient(Protocol):
+    """Protocol for a synchronous LLM client facade."""
+
     def generate(
         self,
         messages: list[dict[str, str]],
@@ -99,7 +125,7 @@ class LLMClient(Protocol):
         **kwargs: Any,
     ) -> LLMResponse:
         """
-        Generate a response from the LLM.
+        Generate a response from the LLM synchronously.
 
         Args:
             messages: A list of message dictionaries (role, content).
@@ -136,9 +162,27 @@ class Metric(Protocol):
 class EmbeddingProvider(Protocol):
     """Protocol for an embedding provider."""
 
+    async def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
+        """
+        Generate embeddings for a list of texts asynchronously.
+
+        Args:
+            texts: List of strings to embed.
+            model: The embedding model to use.
+
+        Returns:
+            An EmbeddingResponse containing vectors and usage stats.
+        """
+        ...  # pragma: no cover
+
+
+@runtime_checkable
+class SyncEmbeddingProvider(Protocol):
+    """Protocol for a synchronous embedding provider facade."""
+
     def embed(self, texts: list[str], model: str | None = None) -> EmbeddingResponse:
         """
-        Generate embeddings for a list of texts.
+        Generate embeddings for a list of texts synchronously.
 
         Args:
             texts: List of strings to embed.
@@ -154,7 +198,7 @@ class PromptOptimizer(ABC):
     """Abstract base class for prompt optimization strategies."""
 
     @abstractmethod
-    def compile(
+    async def compile(
         self,
         agent: Construct,
         trainset: list[TrainingExample],

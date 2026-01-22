@@ -9,7 +9,7 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -39,14 +39,22 @@ def test_tune_empty_dataset(runner: CliRunner, mock_agent_file: Path, tmp_path: 
     p = tmp_path / "empty.jsonl"
     p.write_text("", encoding="utf-8")
 
-    with patch("coreason_optimizer.main.OpenAIClient"), patch("coreason_optimizer.main.MiproOptimizer") as MockOpt:
-        MockOpt.return_value.compile.return_value = OptimizedManifest(
-            agent_id="test",
-            base_model="gpt-4o",
-            optimized_instruction="sys",
-            few_shot_examples=[],
-            performance_metric=0.0,
-            optimization_run_id="run",
+    # Patch OpenAIClientAsync, not OpenAIClient because main.py uses Async client now for tune
+    with (
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClient,
+        patch("coreason_optimizer.main.MiproOptimizer") as MockOpt,
+    ):
+        MockClient.return_value.__aenter__.return_value = AsyncMock()  # Return self from context manager
+
+        MockOpt.return_value.compile = AsyncMock(
+            return_value=OptimizedManifest(
+                agent_id="test",
+                base_model="gpt-4o",
+                optimized_instruction="sys",
+                few_shot_examples=[],
+                performance_metric=0.0,
+                optimization_run_id="run",
+            )
         )
 
         result = runner.invoke(cli, ["tune", "--agent", str(mock_agent_file), "--dataset", str(p)])
@@ -61,14 +69,21 @@ def test_tune_output_parent_missing(runner: CliRunner, mock_agent_file: Path, tm
     output = tmp_path / "missing_dir" / "out.json"
     # missing_dir does not exist
 
-    with patch("coreason_optimizer.main.OpenAIClient"), patch("coreason_optimizer.main.MiproOptimizer") as MockOpt:
-        MockOpt.return_value.compile.return_value = OptimizedManifest(
-            agent_id="test",
-            base_model="gpt-4o",
-            optimized_instruction="sys",
-            few_shot_examples=[],
-            performance_metric=0.0,
-            optimization_run_id="run",
+    with (
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClient,
+        patch("coreason_optimizer.main.MiproOptimizer") as MockOpt,
+    ):
+        MockClient.return_value.__aenter__.return_value = AsyncMock()
+
+        MockOpt.return_value.compile = AsyncMock(
+            return_value=OptimizedManifest(
+                agent_id="test",
+                base_model="gpt-4o",
+                optimized_instruction="sys",
+                few_shot_examples=[],
+                performance_metric=0.0,
+                optimization_run_id="run",
+            )
         )
 
         result = runner.invoke(
@@ -97,10 +112,13 @@ def test_integration_tune_evaluate(runner: CliRunner, mock_agent_file: Path, tmp
     output_manifest = tmp_path / "manifest.json"
 
     # Mocks
+    # Tune uses AsyncClient
     with (
-        patch("coreason_optimizer.main.OpenAIClient") as MockClient,
+        patch("coreason_optimizer.main.OpenAIClientAsync") as MockClientAsync,
         patch("coreason_optimizer.main.MiproOptimizer") as MockOpt,
     ):
+        MockClientAsync.return_value.__aenter__.return_value = AsyncMock()
+
         # Tune Step
         manifest = OptimizedManifest(
             agent_id="test",
@@ -110,7 +128,7 @@ def test_integration_tune_evaluate(runner: CliRunner, mock_agent_file: Path, tmp
             performance_metric=1.0,
             optimization_run_id="run_1",
         )
-        MockOpt.return_value.compile.return_value = manifest
+        MockOpt.return_value.compile = AsyncMock(return_value=manifest)
 
         result_tune = runner.invoke(
             cli,
@@ -127,11 +145,13 @@ def test_integration_tune_evaluate(runner: CliRunner, mock_agent_file: Path, tmp
         assert result_tune.exit_code == 0
         assert output_manifest.exists()
 
+    # Evaluate uses Sync Facade OpenAIClient
+    with patch("coreason_optimizer.main.OpenAIClient") as MockClientSync:
         # Evaluate Step
         # Mock generate for evaluation
         mock_resp = MagicMock()
         mock_resp.content = "a"  # Match reference
-        MockClient.return_value.generate.return_value = mock_resp
+        MockClientSync.return_value.generate.return_value = mock_resp
 
         result_eval = runner.invoke(
             cli,
@@ -163,6 +183,7 @@ def test_evaluate_f1_score(runner: CliRunner, tmp_path: Path) -> None:
     data_file = tmp_path / "data.jsonl"
     data_file.write_text('{"input":{"i":"q"},"reference":"token match"}\n', encoding="utf-8")
 
+    # Evaluate uses Sync Facade
     with patch("coreason_optimizer.main.OpenAIClient") as MockClient:
         # Prediction has partial overlap "token"
         mock_resp = MagicMock()

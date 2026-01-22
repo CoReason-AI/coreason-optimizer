@@ -26,7 +26,7 @@ class CostlyMockClient(LLMClient):
     def __init__(self, cost_per_call: float):
         self.cost_per_call = cost_per_call
 
-    def generate(
+    async def generate(
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
@@ -50,7 +50,8 @@ class MockConstruct:
         return ["a"]
 
 
-def test_bootstrap_budget_enforcement() -> None:
+@pytest.mark.asyncio
+async def test_bootstrap_budget_enforcement() -> None:
     """Test that BootstrapFewShot stops when budget is exceeded."""
     # Budget $1.0. Cost per call $0.6.
     # 1st call: $0.6. OK.
@@ -73,10 +74,11 @@ def test_bootstrap_budget_enforcement() -> None:
     ]
 
     with pytest.raises(BudgetExceededError):
-        optimizer.compile(MockConstruct(), trainset, [])
+        await optimizer.compile(MockConstruct(), trainset, [])
 
 
-def test_budget_boundary_enforcement_loop() -> None:
+@pytest.mark.asyncio
+async def test_budget_boundary_enforcement_loop() -> None:
     """
     Complex test: Run a loop that hits the exact budget limit,
     then tries to go over.
@@ -98,7 +100,7 @@ def test_budget_boundary_enforcement_loop() -> None:
     trainset = [TrainingExample(inputs={"q": str(i)}, reference=str(i)) for i in range(11)]
 
     with pytest.raises(BudgetExceededError):
-        optimizer.compile(MockConstruct(), trainset, [])
+        await optimizer.compile(MockConstruct(), trainset, [])
 
     # Verify we processed 10 calls (total cost 1.0) before failure
     # Wait, we can't easily check optimizer state here because it crashed.
@@ -107,7 +109,8 @@ def test_budget_boundary_enforcement_loop() -> None:
     # we rely on the fact that it raised on the 11th call.
 
 
-def test_mipro_budget_enforcement_mutation() -> None:
+@pytest.mark.asyncio
+async def test_mipro_budget_enforcement_mutation() -> None:
     """Test that MiproOptimizer stops during mutation if budget exceeded."""
     config = OptimizerConfig(budget_limit_usd=1.0)
     client = CostlyMockClient(cost_per_call=0.6)
@@ -128,10 +131,11 @@ def test_mipro_budget_enforcement_mutation() -> None:
     ]
 
     with pytest.raises(BudgetExceededError):
-        optimizer.compile(MockConstruct(), trainset, [])
+        await optimizer.compile(MockConstruct(), trainset, [])
 
 
-def test_mipro_budget_enforcement_diagnosis() -> None:
+@pytest.mark.asyncio
+async def test_mipro_budget_enforcement_diagnosis() -> None:
     """Test that MiproOptimizer stops during diagnosis if budget exceeded."""
     config = OptimizerConfig(budget_limit_usd=1.0)
     client = CostlyMockClient(cost_per_call=0.6)
@@ -148,10 +152,11 @@ def test_mipro_budget_enforcement_diagnosis() -> None:
     ]
 
     with pytest.raises(BudgetExceededError):
-        optimizer.compile(MockConstruct(), trainset, [])
+        await optimizer.compile(MockConstruct(), trainset, [])
 
 
-def test_mipro_budget_enforcement() -> None:
+@pytest.mark.asyncio
+async def test_mipro_budget_enforcement() -> None:
     """Test that MiproOptimizer stops when budget is exceeded."""
     # Budget $1.0. Cost per call $0.6.
 
@@ -174,4 +179,4 @@ def test_mipro_budget_enforcement() -> None:
     #    $0.6 (diagnosis) + $0.6 (mutation) = $1.2. Fail.
 
     with pytest.raises(BudgetExceededError):
-        optimizer.compile(MockConstruct(), trainset, [])
+        await optimizer.compile(MockConstruct(), trainset, [])

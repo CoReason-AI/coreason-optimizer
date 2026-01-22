@@ -64,7 +64,7 @@ class BaseMutator(ABC):
         self.llm_client = llm_client
 
     @abstractmethod
-    def mutate(
+    async def mutate(
         self,
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
@@ -85,7 +85,7 @@ class BaseMutator(ABC):
 class IdentityMutator(BaseMutator):
     """A mutator that returns the instruction unchanged. Useful for baselines."""
 
-    def mutate(
+    async def mutate(
         self,
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
@@ -117,7 +117,7 @@ class LLMInstructionMutator(BaseMutator):
         super().__init__(llm_client)
         self.config = config
 
-    def mutate(
+    async def mutate(
         self,
         current_instruction: str,
         failed_examples: list[TrainingExample] | None = None,
@@ -140,7 +140,7 @@ class LLMInstructionMutator(BaseMutator):
 
         try:
             logger.info("Requesting instruction mutation from Meta-LLM.")
-            response = self.llm_client.generate(
+            response = await self.llm_client.generate(
                 messages=[{"role": "user", "content": meta_prompt}],
                 model=self.config.meta_model,
                 temperature=0.7,
