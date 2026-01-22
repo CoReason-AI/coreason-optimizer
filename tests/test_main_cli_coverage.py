@@ -108,7 +108,9 @@ def test_tune_compile_exception(runner: CliRunner, mock_agent_file: str, mock_da
                 assert "Optimization failed: Compile Error" in result.output
 
 
-def test_tune_save_exception(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
+def test_tune_save_exception(
+    runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: Path
+) -> None:
     """Test exception when saving the manifest."""
     with patch("coreason_optimizer.main.load_agent_from_path"):
         with patch("coreason_optimizer.main.OpenAIClient"):
@@ -133,7 +135,7 @@ def test_tune_save_exception(runner: CliRunner, mock_agent_file: str, mock_datas
                         "--strategy",
                         "bootstrap",
                         "--output",
-                        "/",
+                        str(tmp_path),
                     ],
                 )
                 assert result.exit_code != 0
