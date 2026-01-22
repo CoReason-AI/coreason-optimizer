@@ -8,8 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-<<<<<<< HEAD
-=======
 """
 Configuration models for the Optimizer.
 
@@ -19,7 +17,6 @@ including model selection, metrics, and budget limits.
 
 from typing import Literal
 
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))
 from pydantic import BaseModel, Field
 
 
@@ -42,9 +39,21 @@ class OptimizerConfig(BaseModel):
         default="gpt-4o",
         description="The identifier of the target LLM to optimize for.",
     )
+    meta_model: str = Field(
+        default="gpt-4o",
+        description="The identifier of the meta-LLM used for instruction optimization.",
+    )
     metric: str = Field(
         default="exact_match",
         description="The metric function identifier to use for evaluation.",
+    )
+    selector_type: Literal["random", "semantic"] = Field(
+        default="random",
+        description="The strategy to use for selecting few-shot examples.",
+    )
+    embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="The identifier of the embedding model (used if selector_type is semantic).",
     )
     max_bootstrapped_demos: int = Field(
         default=4,

@@ -8,14 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-<<<<<<< HEAD
-from coreason_optimizer.utils.logger import logger
-
-
-def hello_world() -> str:
-    logger.info("Hello World!")
-    return "Hello World!"
-=======
 """
 CLI Entrypoint for the Coreason Optimizer.
 
@@ -267,4 +259,3 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
 
 if __name__ == "__main__":
     cli()  # pragma: no cover
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))

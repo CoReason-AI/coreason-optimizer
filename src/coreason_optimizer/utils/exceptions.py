@@ -8,8 +8,24 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-from coreason_optimizer.main import hello_world
+"""
+Custom exceptions for the Coreason Optimizer.
+"""
 
 
-def test_hello_world() -> None:
-    assert hello_world() == "Hello World!"
+class OptimizerError(Exception):
+    """Base class for all optimizer exceptions."""
+
+    pass
+
+
+class BudgetExceededError(OptimizerError):
+    """Raised when the optimization budget (USD) is exceeded."""
+
+    pass
+
+
+class ConfigurationError(OptimizerError):
+    """Raised when the configuration is invalid."""
+
+    pass

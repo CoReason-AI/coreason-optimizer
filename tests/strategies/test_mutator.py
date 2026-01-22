@@ -10,6 +10,7 @@
 
 from unittest.mock import Mock
 
+from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.strategies.mutator import IdentityMutator
 
 
@@ -22,5 +23,6 @@ def test_identity_mutator() -> None:
 
     assert new_instruction == instruction
 
-    new_instruction_with_failures = mutator.mutate(instruction, failed_examples=["fail1"])
+    failed_examples = [TrainingExample(inputs={"q": "fail1"}, reference="ref")]
+    new_instruction_with_failures = mutator.mutate(instruction, failed_examples=failed_examples)
     assert new_instruction_with_failures == instruction
