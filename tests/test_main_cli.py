@@ -320,7 +320,7 @@ def test_evaluate_fail_dataset_csv_inference(runner: CliRunner, mock_manifest_fi
     assert "Cannot infer CSV schema" in result.output
 
 
-def test_evaluate_save_fail(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str) -> None:
+def test_evaluate_save_fail(runner: CliRunner, mock_agent_file: str, mock_dataset_file: str, tmp_path: Path) -> None:
     # Testing save failure in tune actually
     with patch("coreason_optimizer.main.load_agent_from_path"):
         with patch("coreason_optimizer.main.OpenAIClient"):
@@ -345,14 +345,15 @@ def test_evaluate_save_fail(runner: CliRunner, mock_agent_file: str, mock_datase
                         "--strategy",
                         "bootstrap",
                         "--output",
-                        "/",
+                        str(tmp_path),
                     ],
                 )
                 assert result.exit_code != 0
-                # Errno 21 Is a directory
+                # Errno 21 Is a directory, or File exists (Mac), or Permission denied
                 assert (
                     "Is a directory" in result.output
                     or "Permission denied" in result.output
+                    or "File exists" in result.output
                     or "Failed to save manifest" in result.output
                 )
 
