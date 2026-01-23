@@ -17,7 +17,7 @@ and few-shot example selection to find the optimal prompt configuration.
 
 import uuid
 
-from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
+from coreason_optimizer.core.budget import BudgetManager
 from coreason_optimizer.core.client import (
     BudgetAwareEmbeddingProvider,
     BudgetAwareLLMClient,
@@ -39,6 +39,7 @@ from coreason_optimizer.strategies.selector import (
     RandomSelector,
     SemanticSelector,
 )
+from coreason_optimizer.utils.exceptions import BudgetExceededError
 from coreason_optimizer.utils.logger import logger
 
 

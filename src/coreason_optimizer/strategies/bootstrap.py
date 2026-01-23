@@ -48,9 +48,6 @@ class BootstrapFewShot(PromptOptimizer):
         metric: Metric,
         config: OptimizerConfig,
     ):
-<<<<<<< HEAD
-        self.llm_client = llm_client
-=======
         """
         Initialize the BootstrapFewShot optimizer.
 
@@ -59,7 +56,7 @@ class BootstrapFewShot(PromptOptimizer):
             metric: The metric to verify correctness.
             config: Optimization configuration.
         """
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))
+        self.llm_client = llm_client
         self.metric = metric
         self.config = config
 

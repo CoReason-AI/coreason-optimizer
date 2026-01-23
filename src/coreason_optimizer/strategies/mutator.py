@@ -8,8 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-<<<<<<< HEAD
-=======
 """
 Instruction Mutation Strategy.
 
@@ -18,10 +16,37 @@ based on observed failure cases.
 """
 
 import json
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))
 from abc import ABC, abstractmethod
 
+from jinja2 import Template
+
+from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import LLMClient
+from coreason_optimizer.core.models import TrainingExample
+from coreason_optimizer.utils.exceptions import BudgetExceededError
+from coreason_optimizer.utils.logger import logger
+
+META_PROMPT_TEMPLATE = """
+You are an expert prompt engineer. Your goal is to improve the following system instruction
+based on the provided failure cases.
+
+Current Instruction:
+"{{ instruction }}"
+
+The instruction failed on the following examples:
+{% for failure in failures %}
+Example {{ loop.index }}:
+Input: {{ failure.inputs }}
+Expected Output: {{ failure.reference }}
+Actual Output: {{ failure.prediction }}
+{% endfor %}
+{% if failures_hidden_count > 0 %}
+... and {{ failures_hidden_count }} more failures.
+{% endif %}
+
+Please rewrite the system instruction to address these failures while maintaining
+performance on general cases. Return ONLY the new instruction text.
+"""
 
 
 class BaseMutator(ABC):
@@ -37,10 +62,6 @@ class BaseMutator(ABC):
         self.llm_client = llm_client
 
     @abstractmethod
-<<<<<<< HEAD
-    def mutate(self, current_instruction: str, failed_examples: list[str] | None = None) -> str:
-        """Generate a new instruction based on the current one and optional failure cases."""
-=======
     def mutate(
         self,
         current_instruction: str,
@@ -56,17 +77,12 @@ class BaseMutator(ABC):
         Returns:
             The new system instruction string.
         """
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))
         pass  # pragma: no cover
 
 
 class IdentityMutator(BaseMutator):
     """A mutator that returns the instruction unchanged. Useful for baselines."""
 
-<<<<<<< HEAD
-    def mutate(self, current_instruction: str, failed_examples: list[str] | None = None) -> str:
-        return current_instruction
-=======
     def mutate(
         self,
         current_instruction: str,
@@ -180,4 +196,3 @@ class LLMInstructionMutator(BaseMutator):
                 failures_hidden_count=failures_hidden_count,
             )
         )
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))

@@ -8,8 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
-<<<<<<< HEAD
-=======
 """
 Example Selection Strategy.
 
@@ -18,10 +16,13 @@ as few-shot demonstrations, using either random sampling or semantic clustering.
 """
 
 import json
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))
 import random
 from abc import ABC, abstractmethod
 
+import numpy as np
+from sklearn.cluster import KMeans
+
+from coreason_optimizer.core.interfaces import EmbeddingProvider
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
 
@@ -72,8 +73,6 @@ class RandomSelector(BaseSelector):
 
         rng = random.Random(self.seed)
         return rng.sample(list(trainset), k)
-<<<<<<< HEAD
-=======
 
 
 class SemanticSelector(BaseSelector):
@@ -166,4 +165,3 @@ class SemanticSelector(BaseSelector):
                 selected_indices.sort()
 
         return [trainset[idx] for idx in selected_indices]
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))

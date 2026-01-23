@@ -10,12 +10,12 @@ packages = [{include = "coreason_optimizer", from = "src"}]
 [tool.poetry.dependencies]
 python = ">=3.12, <3.15"
 loguru = "^0.7.2"
-pydantic = "^2.12.5"
-jinja2 = "^3.1.6"
-openai = "^2.15.0"
-click = "^8.3.1"
-numpy = "^2.4.1"
-scikit-learn = "^1.8.0"
+pydantic = "^2.10"
+jinja2 = "^3.1.4"
+openai = "^1.50"
+click = "^8.1.7"
+numpy = "^2.1"
+scikit-learn = "^1.5.2"
 anyio = "*"
 httpx = "*"
 aiofiles = "*"
@@ -37,26 +37,6 @@ pytest-asyncio = "*"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[project]
-name = "coreason_optimizer"
-version = "0.1.0"
-description = "coreason-optimizer"
-readme = "README.md"
-requires-python = ">=3.11"
-authors = [
-    { name = "Gowtham A Rao", email = "gowtham.rao@coreason.ai" },
-]
-license = { file = "LICENSE" }
-classifiers = [
-    "License :: Other/Proprietary License",
-    "Programming Language :: Python :: 3.12",
-    "Operating System :: OS Independent",
-]
-
-[project.urls]
-Homepage = "https://github.com/CoReason-AI/coreason_optimizer"
-Repository = "https://github.com/CoReason-AI/coreason_optimizer"
-Documentation = "https://github.com/CoReason-AI/coreason_optimizer"
 
 [tool.ruff]
 line-length = 120
