@@ -16,13 +16,8 @@ and enforce a maximum budget to prevent unexpected costs.
 """
 
 from coreason_optimizer.core.interfaces import UsageStats
+from coreason_optimizer.utils.exceptions import BudgetExceededError
 from coreason_optimizer.utils.logger import logger
-
-
-class BudgetExceededError(Exception):
-    """Raised when the optimization budget is exceeded."""
-
-    pass
 
 
 class BudgetManager:

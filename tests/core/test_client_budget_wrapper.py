@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from coreason_optimizer.core.budget import BudgetExceededError, BudgetManager
+from coreason_optimizer.core.budget import BudgetManager
 from coreason_optimizer.core.client import (
     BudgetAwareEmbeddingProvider,
     BudgetAwareEmbeddingProviderAsync,
@@ -30,6 +30,7 @@ from coreason_optimizer.core.interfaces import (
     LLMResponse,
     UsageStats,
 )
+from coreason_optimizer.utils.exceptions import BudgetExceededError
 
 
 class MockLLMClient(LLMClient):

@@ -12,7 +12,7 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import AsyncOpenAI, OpenAIError
+from openai import OpenAIError
 
 from coreason_optimizer.core.client import OpenAIClient
 
@@ -35,7 +35,7 @@ def mock_openai_response() -> MagicMock:
 
 def test_stream_raises_error(mock_openai_response: MagicMock) -> None:
     # We now mock AsyncOpenAI because OpenAIClient uses OpenAIClientAsync internally
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     client = OpenAIClient(client=mock_client)
 
     with pytest.raises(ValueError, match="Streaming is not supported"):
@@ -44,7 +44,7 @@ def test_stream_raises_error(mock_openai_response: MagicMock) -> None:
 
 def test_empty_content_handled(mock_openai_response: MagicMock) -> None:
     mock_openai_response.choices[0].message.content = None
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
 
     # Also need to mock close() because context manager might call it or we might need it if we used context manager
@@ -58,7 +58,7 @@ def test_empty_content_handled(mock_openai_response: MagicMock) -> None:
 
 
 def test_multiple_n_handled(mock_openai_response: MagicMock) -> None:
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
 
     client = OpenAIClient(client=mock_client)

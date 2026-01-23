@@ -16,6 +16,7 @@ and a factory to retrieve them by name.
 """
 
 import collections
+import json
 import re
 import string
 from typing import Any, Callable
@@ -110,8 +111,6 @@ class F1Score(Metric):
         return self._score_single(prediction, reference)
 
 
-<<<<<<< HEAD
-=======
 class JsonValidity(Metric):
     """Computes whether the prediction is valid JSON (ignoring reference)."""
 
@@ -166,13 +165,13 @@ class JsonValidity(Metric):
         return 0.0
 
 
->>>>>>> c9d6380 (feat: enhance documentation, code standards, and dependencies (#31) (#32))
 class MetricFactory:
     """Factory for creating metrics by name."""
 
     _metrics: dict[str, Callable[[], Metric]] = {
         "exact_match": ExactMatch,
         "f1_score": F1Score,
+        "json_validity": JsonValidity,
     }
 
     @classmethod

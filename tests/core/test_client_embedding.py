@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import AsyncOpenAI, OpenAIError
+from openai import OpenAIError
 
 from coreason_optimizer.core.client import (
     BudgetAwareEmbeddingProvider,
@@ -23,7 +23,7 @@ from coreason_optimizer.core.client import (
 
 
 def test_embed_success() -> None:
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     # Mock response
     mock_response = MagicMock()
     mock_data = [MagicMock(embedding=[0.1, 0.2]), MagicMock(embedding=[0.3, 0.4])]
@@ -58,7 +58,7 @@ def test_budget_aware_provider() -> None:
 
 
 def test_embed_error() -> None:
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     mock_client.embeddings.create = AsyncMock(side_effect=RuntimeError("API Error"))
     mock_client.close = AsyncMock()
 
@@ -86,7 +86,7 @@ async def test_init_default() -> None:
             assert c.client is not None
 
     # If we pass client, it works
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     async with OpenAIEmbeddingClientAsync(client=mock_client) as c:
         assert c.client is not None
         assert c.client == mock_client
@@ -94,7 +94,7 @@ async def test_init_default() -> None:
 
 def test_embed_large_batch() -> None:
     # Test that client batches requests if input is larger than batch_size (500)
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     mock_client.close = AsyncMock()
     # We want 505 items.
     # 1st call: 500 items. 2nd call: 5 items.
