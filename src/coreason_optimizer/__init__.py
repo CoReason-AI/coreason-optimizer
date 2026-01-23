@@ -9,13 +9,17 @@
 # Source Code: https://github.com/CoReason-AI/coreason_optimizer
 
 """
-coreason-optimizer
+coreason-optimizer package initialization.
+
+This package provides the "Compiler" for the CoReason Agentic Platform,
+treating prompts as trainable weights and optimizing them against ground-truth datasets.
 """
+
+from coreason_optimizer.core.config import OptimizerConfig
+from coreason_optimizer.core.interfaces import PromptOptimizer
 
 __version__ = "0.1.0"
 __author__ = "Gowtham A Rao"
 __email__ = "gowtham.rao@coreason.ai"
 
-from .main import hello_world
-
-__all__ = ["hello_world"]
+__all__ = ["OptimizerConfig", "PromptOptimizer"]
