@@ -12,7 +12,6 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import AsyncOpenAI
 
 from coreason_optimizer.core.client import OpenAIClient, OpenAIClientAsync
 from coreason_optimizer.core.interfaces import LLMResponse
@@ -59,7 +58,8 @@ async def test_openai_client_async_initialization_with_env_var() -> None:
 @pytest.mark.asyncio
 async def test_openai_client_async_generate(mock_openai_response: MagicMock) -> None:
     # Fix: AsyncMock for nested calls
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    # Remove spec=AsyncOpenAI to allow dynamic attributes in newer openai versions
+    mock_client = AsyncMock()
     # create needs to be an async mock that returns the response
     mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
 
@@ -84,7 +84,7 @@ async def test_openai_client_async_generate(mock_openai_response: MagicMock) -> 
 
 def test_openai_client_sync_facade(mock_openai_response: MagicMock) -> None:
     """Test the synchronous facade wrapping the async client."""
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     # Ensure create is awaitable
     mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
 
@@ -103,7 +103,7 @@ def test_openai_client_sync_facade(mock_openai_response: MagicMock) -> None:
 
 @pytest.mark.asyncio
 async def test_openai_client_async_generate_unknown_model(mock_openai_response: MagicMock) -> None:
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
 
     client = OpenAIClientAsync(client=mock_client)
@@ -117,7 +117,7 @@ async def test_openai_client_async_generate_unknown_model(mock_openai_response: 
 @pytest.mark.asyncio
 async def test_openai_client_async_generate_no_usage(mock_openai_response: MagicMock) -> None:
     mock_openai_response.usage = None
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
 
     client = OpenAIClientAsync(client=mock_client)
@@ -129,7 +129,7 @@ async def test_openai_client_async_generate_no_usage(mock_openai_response: Magic
 
 @pytest.mark.asyncio
 async def test_openai_client_async_generate_failure() -> None:
-    mock_client = AsyncMock(spec=AsyncOpenAI)
+    mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
 
     client = OpenAIClientAsync(client=mock_client)
