@@ -18,7 +18,7 @@ treating prompts as trainable weights and optimizing them against ground-truth d
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.interfaces import PromptOptimizer
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Gowtham A Rao"
 __email__ = "gowtham.rao@coreason.ai"
 

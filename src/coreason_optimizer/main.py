@@ -19,8 +19,9 @@ import json
 from pathlib import Path
 
 import click
+from coreason_identity.models import UserContext
 
-from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient
+from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient, OptimizationClient
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.interfaces import PromptOptimizer
@@ -29,6 +30,7 @@ from coreason_optimizer.core.models import OptimizedManifest
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.bootstrap import BootstrapFewShot
 from coreason_optimizer.strategies.mipro import MiproOptimizer
+from coreason_optimizer.strategies.selector import StrategySelector
 from coreason_optimizer.utils.import_utils import load_agent_from_path
 from coreason_optimizer.utils.logger import logger
 
@@ -88,7 +90,28 @@ def tune(
         strategy: Optimization strategy to use ('mipro' or 'bootstrap').
         selector: Few-shot example selection strategy ('random' or 'semantic').
     """
-    logger.info(f"Starting optimization for agent: {agent}")
+    # Create System Context
+    system_context = UserContext(
+        user_id="cli-user",
+        email="cli-user@coreason.ai",
+        groups=["system"],
+        claims={"source": "cli"},
+    )
+
+    logger.info(
+        f"Starting optimization for agent: {agent}",
+        user_id=system_context.user_id,
+    )
+
+    # Initialize Optimization Client (Audit)
+    opt_client = OptimizationClient()
+    # We store the study_id but don't strictly use it yet in this version of the optimizer,
+    # but we register it for audit compliance.
+    _ = opt_client.register_study(f"opt-{Path(agent).stem}", context=system_context)
+
+    # Validate Strategy
+    strat_selector = StrategySelector()
+    strategy = strat_selector.select_strategy(strategy, context=system_context)
 
     # Load Agent
     try:
@@ -101,11 +124,13 @@ def tune(
     try:
         ds_path = Path(dataset)
         if ds_path.suffix.lower() == ".jsonl":
-            full_ds = Dataset.from_jsonl(ds_path)
+            full_ds = Dataset.from_jsonl(ds_path, context=system_context)
         elif ds_path.suffix.lower() == ".csv":
             # Assume reference col is 'reference' and inputs are from construct
             input_cols = construct.inputs
-            full_ds = Dataset.from_csv(ds_path, input_cols=input_cols, reference_col="reference")
+            full_ds = Dataset.from_csv(
+                ds_path, input_cols=input_cols, reference_col="reference", context=system_context
+            )
         else:
             raise click.ClickException("Unsupported file format. Use .csv or .jsonl")
     except Exception as e:
@@ -202,16 +227,29 @@ def evaluate(manifest: str, dataset: str, metric: str) -> None:
     except Exception as e:
         raise click.ClickException(f"Failed to load manifest: {e}") from e
 
+    # Create System Context for Evaluation
+    system_context = UserContext(
+        user_id="cli-evaluator",
+        email="evaluator@coreason.ai",
+        groups=["system"],
+        claims={"source": "cli-eval"},
+    )
+
     # Load Dataset
     try:
         ds_path = Path(dataset)
         if ds_path.suffix.lower() == ".jsonl":
-            eval_ds = Dataset.from_jsonl(ds_path)
+            eval_ds = Dataset.from_jsonl(ds_path, context=system_context)
         else:
             # Fallback for CSV: try to use keys from first few-shot example if available
             if manifest_obj.few_shot_examples:
                 input_cols = list(manifest_obj.few_shot_examples[0].inputs.keys())
-                eval_ds = Dataset.from_csv(ds_path, input_cols=input_cols, reference_col="reference")
+                eval_ds = Dataset.from_csv(
+                    ds_path,
+                    input_cols=input_cols,
+                    reference_col="reference",
+                    context=system_context,
+                )
             else:
                 raise click.ClickException(
                     "Cannot infer CSV schema for evaluation without few-shot examples in manifest. Use JSONL."
