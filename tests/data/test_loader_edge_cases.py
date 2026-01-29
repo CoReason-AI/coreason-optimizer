@@ -14,11 +14,12 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_optimizer.data.loader import Dataset
 
 
-def test_csv_missing_columns() -> None:
+def test_csv_missing_columns(mock_context: UserContext) -> None:
     """Test that missing columns in CSV results in skipped rows or empty inputs."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         writer = csv.writer(f)
@@ -30,27 +31,27 @@ def test_csv_missing_columns() -> None:
 
     try:
         # csv.DictReader behavior: if row has fewer fields than fieldnames, values are None
-        ds = Dataset.from_csv(filepath, input_cols=["q"], reference_col="a")
+        ds = Dataset.from_csv(filepath, input_cols=["q"], reference_col="a", context=mock_context)
         # Should skip because reference 'a' is None
         assert len(ds) == 0
     finally:
         filepath.unlink()
 
 
-def test_csv_empty_file() -> None:
+def test_csv_empty_file(mock_context: UserContext) -> None:
     """Test loading an empty CSV file (header only or completely empty)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         f.write("q,a\n")  # Header only
         filepath = Path(f.name)
 
     try:
-        ds = Dataset.from_csv(filepath, input_cols=["q"], reference_col="a")
+        ds = Dataset.from_csv(filepath, input_cols=["q"], reference_col="a", context=mock_context)
         assert len(ds) == 0
     finally:
         filepath.unlink()
 
 
-def test_jsonl_malformed_line() -> None:
+def test_jsonl_malformed_line(mock_context: UserContext) -> None:
     """Test that malformed JSON lines cause a failure (or check specific behavior)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write('{"q": "good", "reference": "ok"}\n')
@@ -61,7 +62,7 @@ def test_jsonl_malformed_line() -> None:
         # Current implementation uses json.loads inside a loop without try-except block for parsing
         # So it should raise JSONDecodeError
         with pytest.raises(json.JSONDecodeError):
-            Dataset.from_jsonl(filepath)
+            Dataset.from_jsonl(filepath, context=mock_context)
     finally:
         filepath.unlink()
 

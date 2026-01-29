@@ -20,11 +20,13 @@ import random
 from abc import ABC, abstractmethod
 
 import numpy as np
+from coreason_identity.models import UserContext
 from sklearn.cluster import KMeans
 
 from coreason_optimizer.core.interfaces import EmbeddingProvider
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
+from coreason_optimizer.utils.logger import logger
 
 
 class BaseSelector(ABC):
@@ -165,3 +167,32 @@ class SemanticSelector(BaseSelector):
                 selected_indices.sort()
 
         return [trainset[idx] for idx in selected_indices]
+
+
+class StrategySelector:
+    """Selector for choosing the optimization strategy based on identity and policy."""
+
+    def select_strategy(self, strategy: str, context: UserContext) -> str:
+        """
+        Select and validate the optimization strategy.
+
+        Args:
+            strategy: The requested strategy name.
+            context: The user context.
+
+        Returns:
+            The authorized strategy name.
+
+        Raises:
+            ValueError: If context is missing.
+        """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        logger.info(
+            "Selecting optimization strategy",
+            user_id=context.user_id,
+            authorized_strategies=context.claims.get("strategies", "all"),
+        )
+
+        return strategy

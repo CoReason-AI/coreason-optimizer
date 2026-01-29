@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "coreason_optimizer"
-version = "0.1.0"
+version = "0.2.0"
 description = "coreason-optimizer"
 authors = ["Gowtham A Rao <gowtham.rao@coreason.ai>"]
 license = "Prosperity-3.0"
@@ -16,10 +16,11 @@ openai = "^1.50"
 click = "^8.1.7"
 numpy = "^2.1"
 scikit-learn = "^1.5.2"
-anyio = "*"
+anyio = "^4.12.1"
 httpx = "*"
 aiofiles = "*"
 types-aiofiles = "*"
+coreason-identity = "^0.4.1"
 
 [tool.poetry.scripts]
 coreason-opt = "coreason_optimizer.main:cli"
