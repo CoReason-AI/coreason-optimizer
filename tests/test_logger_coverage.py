@@ -1,8 +1,6 @@
 import shutil
-import sys
 from importlib import reload
 from pathlib import Path
-from unittest.mock import patch
 
 from coreason_optimizer.utils import logger
 
