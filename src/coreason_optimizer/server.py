@@ -13,7 +13,7 @@ FastAPI Server implementation for the Coreason Optimization Microservice.
 """
 
 import contextlib
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, cast
 
 import anyio
 import httpx
@@ -33,8 +33,8 @@ from coreason_optimizer.server_schemas import AgentDefinition, OptimizationReque
 from coreason_optimizer.strategies.bootstrap import BootstrapFewShot
 from coreason_optimizer.strategies.mipro import MiproOptimizer
 
-
 # --- Adapters ---
+
 
 class DynamicConstruct:
     """
@@ -75,12 +75,10 @@ class BridgedLLMClient:
         **kwargs: Any,
     ) -> LLMResponse:
         async def _call() -> LLMResponse:
-            return await self.async_client.generate(
-                messages=messages, model=model, temperature=temperature, **kwargs
-            )
+            return await self.async_client.generate(messages=messages, model=model, temperature=temperature, **kwargs)
 
         # Dispatch to the main event loop
-        return anyio.from_thread.run(_call)
+        return cast(LLMResponse, anyio.from_thread.run(_call))
 
 
 class BridgedEmbeddingProvider:
@@ -96,10 +94,11 @@ class BridgedEmbeddingProvider:
             return await self.async_provider.embed(texts=texts, model=model)
 
         # Dispatch to the main event loop
-        return anyio.from_thread.run(_call)
+        return cast(EmbeddingResponse, anyio.from_thread.run(_call))
 
 
 # --- Lifespan ---
+
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -133,6 +132,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan)
 
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ready"}
@@ -153,21 +153,21 @@ def optimize(request: Request, body: OptimizationRequest) -> Any:
 
     # 3. Clients: Bridge to shared async clients
     if not hasattr(request.app.state, "llm_client_async"):
-         raise HTTPException(status_code=500, detail="LLM Client not initialized")
+        raise HTTPException(status_code=500, detail="LLM Client not initialized")
 
     llm_client = BridgedLLMClient(request.app.state.llm_client_async)
 
     embedding_provider = None
     if body.config.selector_type == "semantic":
         if not hasattr(request.app.state, "embedding_client_async"):
-             raise HTTPException(status_code=500, detail="Embedding Client not initialized")
+            raise HTTPException(status_code=500, detail="Embedding Client not initialized")
         embedding_provider = BridgedEmbeddingProvider(request.app.state.embedding_client_async)
 
     # 4. Metric
     try:
         metric = MetricFactory.get(body.config.metric)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # 5. Strategy: Initialize the optimizer
     optimizer: Any
@@ -175,9 +175,7 @@ def optimize(request: Request, body: OptimizationRequest) -> Any:
         optimizer = BootstrapFewShot(llm_client, metric, body.config)
     else:
         # Default to Mipro
-        optimizer = MiproOptimizer(
-            llm_client, metric, body.config, embedding_provider=embedding_provider
-        )
+        optimizer = MiproOptimizer(llm_client, metric, body.config, embedding_provider=embedding_provider)
 
     # 6. Run Compilation
     try:
@@ -185,4 +183,4 @@ def optimize(request: Request, body: OptimizationRequest) -> Any:
         return manifest
     except Exception as e:
         # In production, we should log the full traceback
-        raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}") from e

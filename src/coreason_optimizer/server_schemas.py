@@ -39,9 +39,5 @@ class OptimizationRequest(BaseModel):
 
     agent: AgentDefinition = Field(..., description="The agent to optimize.")
     dataset: list[TrainingExample] = Field(..., description="List of training examples.")
-    config: OptimizerConfig = Field(
-        default_factory=OptimizerConfig, description="Optimization configuration."
-    )
-    strategy: Literal["mipro", "bootstrap"] = Field(
-        default="mipro", description="Optimization strategy to use."
-    )
+    config: OptimizerConfig = Field(default_factory=OptimizerConfig, description="Optimization configuration.")
+    strategy: Literal["mipro", "bootstrap"] = Field(default="mipro", description="Optimization strategy to use.")

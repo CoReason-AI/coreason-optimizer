@@ -1,30 +1,35 @@
 import os
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch, AsyncMock
 
 # Set dummy API key for tests
 os.environ["OPENAI_API_KEY"] = "sk-dummy-key"
 
+from coreason_optimizer.core.models import OptimizedManifest
 from coreason_optimizer.server import app
-from coreason_optimizer.core.models import TrainingExample, OptimizedManifest
 
-def test_health():
+
+def test_health() -> None:
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ready"}
 
-def test_optimize_schema_validation():
+
+def test_optimize_schema_validation() -> None:
     with TestClient(app) as client:
         # Invalid request (missing fields)
         response = client.post("/optimize", json={})
         assert response.status_code == 422
 
+
 @patch("coreason_optimizer.server.MiproOptimizer")
 @patch("coreason_optimizer.server.BootstrapFewShot")
 @patch("coreason_optimizer.server.MetricFactory")
-def test_optimize_endpoint(mock_metric, mock_bootstrap, mock_mipro):
+def test_optimize_endpoint(mock_metric: MagicMock, mock_bootstrap: MagicMock, mock_mipro: MagicMock) -> None:
     # Setup mocks
     mock_optimizer_instance = MagicMock()
     mock_mipro.return_value = mock_optimizer_instance
@@ -35,33 +40,18 @@ def test_optimize_endpoint(mock_metric, mock_bootstrap, mock_mipro):
         optimized_instruction="Optimized system prompt",
         few_shot_examples=[],
         performance_metric=1.0,
-        optimization_run_id="test_run"
+        optimization_run_id="test_run",
     )
     mock_optimizer_instance.compile.return_value = mock_manifest
 
     payload = {
-        "agent": {
-            "system_prompt": "Original prompt",
-            "inputs": ["input1"],
-            "outputs": ["output1"]
-        },
+        "agent": {"system_prompt": "Original prompt", "inputs": ["input1"], "outputs": ["output1"]},
         "dataset": [
-            {
-                "inputs": {"input1": "val1"},
-                "reference": "ref1",
-                "metadata": {}
-            },
-            {
-                "inputs": {"input1": "val2"},
-                "reference": "ref2",
-                "metadata": {}
-            }
+            {"inputs": {"input1": "val1"}, "reference": "ref1", "metadata": {}},
+            {"inputs": {"input1": "val2"}, "reference": "ref2", "metadata": {}},
         ],
-        "config": {
-            "metric": "exact_match",
-            "target_model": "gpt-4o"
-        },
-        "strategy": "mipro"
+        "config": {"metric": "exact_match", "target_model": "gpt-4o"},
+        "strategy": "mipro",
     }
 
     with TestClient(app) as client:
@@ -80,73 +70,62 @@ def test_optimize_endpoint(mock_metric, mock_bootstrap, mock_mipro):
         mock_mipro.assert_called_once()
         mock_optimizer_instance.compile.assert_called_once()
 
-def test_dynamic_construct():
+
+def test_dynamic_construct() -> None:
     from coreason_optimizer.server import DynamicConstruct
     from coreason_optimizer.server_schemas import AgentDefinition
 
-    ad = AgentDefinition(
-        system_prompt="sys",
-        inputs=["i"],
-        outputs=["o"]
-    )
+    ad = AgentDefinition(system_prompt="sys", inputs=["i"], outputs=["o"])
     dc = DynamicConstruct(ad)
     assert dc.system_prompt == "sys"
     assert dc.inputs == ["i"]
     assert dc.outputs == ["o"]
 
+
 @pytest.mark.asyncio
-async def test_bridged_client():
-    from coreason_optimizer.server import BridgedLLMClient
+async def test_bridged_client() -> None:
     import anyio
+
+    from coreason_optimizer.server import BridgedLLMClient
 
     mock_async = AsyncMock()
     mock_async.generate.return_value = "response"
 
     bridge = BridgedLLMClient(mock_async)
 
-    def worker():
-        return bridge.generate(messages=[])
+    def worker() -> str:
+        return str(bridge.generate(messages=[]))
 
     result = await anyio.to_thread.run_sync(worker)
     assert result == "response"
     mock_async.generate.assert_called_once()
 
+
 @pytest.mark.asyncio
-async def test_bridged_embedding_provider():
-    from coreason_optimizer.server import BridgedEmbeddingProvider
+async def test_bridged_embedding_provider() -> None:
     import anyio
+
+    from coreason_optimizer.server import BridgedEmbeddingProvider
 
     mock_async = AsyncMock()
     mock_async.embed.return_value = "embeddings"
 
     bridge = BridgedEmbeddingProvider(mock_async)
 
-    def worker():
-        return bridge.embed(texts=[])
+    def worker() -> str:
+        return str(bridge.embed(texts=[]))
 
     result = await anyio.to_thread.run_sync(worker)
     assert result == "embeddings"
     mock_async.embed.assert_called_once()
 
-def test_optimize_errors_and_bootstrap():
-    payload = {
-        "agent": {
-            "system_prompt": "Original prompt",
-            "inputs": ["input1"],
-            "outputs": ["output1"]
-        },
-        "dataset": [
-            {
-                "inputs": {"input1": "val1"},
-                "reference": "ref1",
-                "metadata": {}
-            }
-        ],
-        "config": {
-            "metric": "unknown_metric",
-            "target_model": "gpt-4o"
-        },
-        "strategy": "mipro"
+
+def test_optimize_errors_and_bootstrap() -> None:
+    payload: dict[str, Any] = {
+        "agent": {"system_prompt": "Original prompt", "inputs": ["input1"], "outputs": ["output1"]},
+        "dataset": [{"inputs": {"input1": "val1"}, "reference": "ref1", "metadata": {}}],
+        "config": {"metric": "unknown_metric", "target_model": "gpt-4o"},
+        "strategy": "mipro",
     }
 
     # 1. Unknown metric
@@ -164,8 +143,11 @@ def test_optimize_errors_and_bootstrap():
         mock_boot.return_value = mock_instance
         # Mock compile return
         mock_instance.compile.return_value = OptimizedManifest(
-             agent_id="test", base_model="gpt", optimized_instruction="sys",
-             performance_metric=1.0, optimization_run_id="id"
+            agent_id="test",
+            base_model="gpt",
+            optimized_instruction="sys",
+            performance_metric=1.0,
+            optimization_run_id="id",
         )
 
         with TestClient(app) as client:
@@ -182,22 +164,13 @@ def test_optimize_errors_and_bootstrap():
             assert response.status_code == 500
             assert "Boom" in response.text
 
-def test_missing_state():
-    payload = {
-        "agent": {
-            "system_prompt": "Original prompt",
-            "inputs": ["input1"],
-            "outputs": ["output1"]
-        },
-        "dataset": [
-            {
-                "inputs": {"input1": "val1"},
-                "reference": "ref1",
-                "metadata": {}
-            }
-        ],
+
+def test_missing_state() -> None:
+    payload: dict[str, Any] = {
+        "agent": {"system_prompt": "Original prompt", "inputs": ["input1"], "outputs": ["output1"]},
+        "dataset": [{"inputs": {"input1": "val1"}, "reference": "ref1", "metadata": {}}],
         "config": {"metric": "exact_match", "selector_type": "random"},
-        "strategy": "mipro"
+        "strategy": "mipro",
     }
 
     with TestClient(app) as client:
