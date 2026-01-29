@@ -21,6 +21,7 @@ from coreason_optimizer.core.metrics import MetricFactory
 from coreason_optimizer.core.models import OptimizedManifest
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.mipro import MiproOptimizer
+from coreason_identity.models import UserContext
 
 
 class MockAgent:
@@ -31,7 +32,7 @@ class MockAgent:
     outputs = ["answer"]
 
 
-def test_readme_library_usage_flow(tmp_path: Path) -> None:
+def test_readme_library_usage_flow(tmp_path: Path, mock_context: UserContext) -> None:
     """
     Verify the code snippet in 'Library Usage' section of README.md works.
     """
@@ -82,8 +83,12 @@ def test_readme_library_usage_flow(tmp_path: Path) -> None:
         optimizer = MiproOptimizer(client, metric, config)
 
         # 3. Load Data
-        train_set = Dataset.from_csv(train_csv, input_cols=["question"], reference_col="answer")
-        val_set = Dataset.from_csv(val_csv, input_cols=["question"], reference_col="answer")
+        train_set = Dataset.from_csv(
+            train_csv, input_cols=["question"], reference_col="answer", context=mock_context
+        )
+        val_set = Dataset.from_csv(
+            val_csv, input_cols=["question"], reference_col="answer", context=mock_context
+        )
 
         # 4. Compile
         agent = MockAgent()

@@ -21,7 +21,9 @@ import random
 from collections.abc import Iterator
 from pathlib import Path
 
+from coreason_identity.models import UserContext
 from coreason_optimizer.core.models import TrainingExample
+from coreason_optimizer.utils.logger import logger
 
 
 class Dataset:
@@ -46,7 +48,14 @@ class Dataset:
         return iter(self.examples)
 
     @classmethod
-    def from_csv(cls, filepath: str | Path, input_cols: list[str], reference_col: str) -> "Dataset":
+    def from_csv(
+        cls,
+        filepath: str | Path,
+        input_cols: list[str],
+        reference_col: str,
+        *,
+        context: UserContext,
+    ) -> "Dataset":
         """
         Load a dataset from a CSV file.
 
@@ -54,16 +63,27 @@ class Dataset:
             filepath: Path to the CSV file.
             input_cols: List of column names to treat as inputs.
             reference_col: Column name to treat as the reference output.
+            context: The user context authorizing this operation.
 
         Returns:
             A Dataset instance.
 
         Raises:
             FileNotFoundError: If the file does not exist.
+            ValueError: If context is missing.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
         path = Path(filepath)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
+
+        logger.info(
+            "Loading dataset from CSV",
+            user_id=context.user_id,
+            filepath=str(path),
+        )
 
         examples = []
         with path.open("r", encoding="utf-8") as f:
@@ -88,7 +108,7 @@ class Dataset:
         return cls(examples)
 
     @classmethod
-    def from_jsonl(cls, filepath: str | Path) -> "Dataset":
+    def from_jsonl(cls, filepath: str | Path, *, context: UserContext) -> "Dataset":
         """
         Load a dataset from a JSONL file.
 
@@ -99,16 +119,27 @@ class Dataset:
 
         Args:
             filepath: Path to the JSONL file.
+            context: The user context authorizing this operation.
 
         Returns:
             A Dataset instance.
 
         Raises:
             FileNotFoundError: If the file does not exist.
+            ValueError: If context is missing.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
         path = Path(filepath)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
+
+        logger.info(
+            "Loading dataset from JSONL",
+            user_id=context.user_id,
+            filepath=str(path),
+        )
 
         examples = []
         with path.open("r", encoding="utf-8") as f:

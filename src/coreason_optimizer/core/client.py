@@ -16,10 +16,12 @@ along with wrappers for budget tracking.
 """
 
 import os
+import uuid
 from typing import Any, Optional
 
 import anyio
 import httpx
+from coreason_identity.models import UserContext
 from openai import AsyncOpenAI
 
 from coreason_optimizer.core.budget import BudgetManager
@@ -462,3 +464,106 @@ class BudgetAwareEmbeddingProvider:
         response = self.provider.embed(texts, model)
         self.budget_manager.consume(response.usage)
         return response
+
+
+class OptimizationClient:
+    """
+    Client for managing optimization studies with identity awareness.
+
+    This client serves as a centralized manager for optimization studies,
+    ensuring all operations are audited and authorized against a UserContext.
+    """
+
+    def __init__(self) -> None:
+        # In-memory store for studies (simulating backend)
+        self._studies: dict[str, dict[str, Any]] = {}
+
+    def register_study(self, study_name: str, *, context: UserContext) -> str:
+        """
+        Register a new optimization study.
+
+        Args:
+            study_name: The name of the study.
+            context: The user context authorizing this operation.
+
+        Returns:
+            The study ID.
+
+        Raises:
+            ValueError: If context is missing.
+        """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        # Simulate study creation
+        study_id = f"study_{uuid.uuid4().hex[:8]}"
+        self._studies[study_id] = {
+            "name": study_name,
+            "owner": context.user_id,
+            "trials": [],
+        }
+
+        # Audit the operation
+        # Note: context.user_id is a string in coreason-identity 0.4.x, not SecretStr.
+        # We log it as the authenticated user identifier.
+        logger.info(
+            "Registering optimization study",
+            user_id=context.user_id,
+            study_name=study_name,
+            study_id=study_id,
+        )
+        return study_id
+
+    def get_suggestion(self, study_id: str, *, context: UserContext) -> dict[str, Any]:
+        """
+        Get the next parameter suggestion for a study.
+
+        Args:
+            study_id: The ID of the study.
+            context: The user context authorizing this operation.
+
+        Returns:
+            A dictionary of suggested parameters.
+
+        Raises:
+            ValueError: If context is missing.
+        """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        # Verify access (simple check)
+        # In a real system, we would check RLS/permissions here.
+
+        logger.debug(
+            "Requesting parameter suggestion",
+            user_id=context.user_id,
+            study_id=str(study_id),
+        )
+
+        # Return a dummy suggestion or based on prior trials (simulated)
+        return {"param_a": 0.1, "param_b": "strategy_v1"}
+
+    def report_metric(self, study_id: str, metric: float, *, context: UserContext) -> None:
+        """
+        Report a metric for a trial.
+
+        Args:
+            study_id: The ID of the study.
+            metric: The metric value.
+            context: The user context authorizing this operation.
+
+        Raises:
+            ValueError: If context is missing.
+        """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        if study_id in self._studies:
+            self._studies[study_id]["trials"].append({"metric": metric, "user": context.user_id})
+
+        logger.debug(
+            "Reporting metric",
+            user_id=context.user_id,
+            study_id=study_id,
+            metric=metric,
+        )

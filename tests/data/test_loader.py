@@ -17,6 +17,7 @@ import pytest
 
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
+from coreason_identity.models import UserContext
 
 
 def test_dataset_initialization() -> None:
@@ -30,7 +31,7 @@ def test_dataset_initialization() -> None:
     assert [e.reference for e in ds] == ["A", "B"]
 
 
-def test_load_from_csv() -> None:
+def test_load_from_csv(mock_context: UserContext) -> None:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         writer = csv.writer(f)
         writer.writerow(["question", "answer", "extra"])
@@ -42,7 +43,9 @@ def test_load_from_csv() -> None:
         filepath = Path(f.name)
 
     try:
-        ds = Dataset.from_csv(filepath, input_cols=["question"], reference_col="answer")
+        ds = Dataset.from_csv(
+            filepath, input_cols=["question"], reference_col="answer", context=mock_context
+        )
         assert len(ds) == 2
         assert ds[0].inputs["question"] == "What is 1+1?"
         assert ds[0].reference == "2"
@@ -51,12 +54,12 @@ def test_load_from_csv() -> None:
         filepath.unlink()
 
 
-def test_load_from_csv_missing_file() -> None:
+def test_load_from_csv_missing_file(mock_context: UserContext) -> None:
     with pytest.raises(FileNotFoundError):
-        Dataset.from_csv("non_existent.csv", [], "")
+        Dataset.from_csv("non_existent.csv", [], "", context=mock_context)
 
 
-def test_load_from_jsonl() -> None:
+def test_load_from_jsonl(mock_context: UserContext) -> None:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write(json.dumps({"inputs": {"q": "foo"}, "reference": "bar"}) + "\n")
         f.write(json.dumps({"input": {"q": "baz"}, "output": "qux"}) + "\n")
@@ -66,7 +69,7 @@ def test_load_from_jsonl() -> None:
         filepath = Path(f.name)
 
     try:
-        ds = Dataset.from_jsonl(filepath)
+        ds = Dataset.from_jsonl(filepath, context=mock_context)
         assert len(ds) == 3
 
         # Check first format
@@ -84,9 +87,9 @@ def test_load_from_jsonl() -> None:
         filepath.unlink()
 
 
-def test_load_from_jsonl_missing_file() -> None:
+def test_load_from_jsonl_missing_file(mock_context: UserContext) -> None:
     with pytest.raises(FileNotFoundError):
-        Dataset.from_jsonl("non_existent.jsonl")
+        Dataset.from_jsonl("non_existent.jsonl", context=mock_context)
 
 
 def test_split_dataset() -> None:
