@@ -26,6 +26,9 @@ def test_logger_directory_creation() -> None:
 
     finally:
         # Cleanup (optional, but good practice)
+        # Remove the handler again to release the file lock
+        logger.logger.remove()
+
         if log_path.exists():
             shutil.rmtree(log_path)
 
