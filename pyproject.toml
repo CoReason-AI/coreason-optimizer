@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "coreason_optimizer"
-version = "0.2.1"
+version = "0.3.0"
 description = "coreason-optimizer"
 authors = ["Gowtham A Rao <gowtham.rao@coreason.ai>"]
 license = "Prosperity-3.0"
@@ -21,6 +21,8 @@ httpx = "^0.28.1"
 aiofiles = "*"
 types-aiofiles = "*"
 coreason-identity = "^0.4.1"
+fastapi = "^0.128.0"
+uvicorn = "^0.40.0"
 
 [tool.poetry.scripts]
 coreason-opt = "coreason_optimizer.main:cli"
