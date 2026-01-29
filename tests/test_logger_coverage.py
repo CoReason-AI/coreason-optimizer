@@ -7,6 +7,9 @@ from coreason_optimizer.utils import logger
 
 def test_logger_directory_creation() -> None:
     """Test that the logger creates the logs directory if it doesn't exist."""
+    # Ensure any previous logger handlers are removed to close file handles
+    logger.logger.remove()
+
     # Ensure logs directory does NOT exist initially
     log_path = Path("logs")
     if log_path.exists():
