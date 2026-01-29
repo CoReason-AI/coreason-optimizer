@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 
 import click
-from coreason_identity.models import SecretStr, UserContext
+from coreason_identity.models import UserContext
 
 from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient, OptimizationClient
 from coreason_optimizer.core.config import OptimizerConfig
