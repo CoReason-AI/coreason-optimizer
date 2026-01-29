@@ -14,10 +14,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset
-from coreason_identity.models import UserContext
 
 
 def test_dataset_initialization() -> None:
@@ -43,9 +43,7 @@ def test_load_from_csv(mock_context: UserContext) -> None:
         filepath = Path(f.name)
 
     try:
-        ds = Dataset.from_csv(
-            filepath, input_cols=["question"], reference_col="answer", context=mock_context
-        )
+        ds = Dataset.from_csv(filepath, input_cols=["question"], reference_col="answer", context=mock_context)
         assert len(ds) == 2
         assert ds[0].inputs["question"] == "What is 1+1?"
         assert ds[0].reference == "2"

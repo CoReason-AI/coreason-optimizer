@@ -20,9 +20,9 @@ import random
 from abc import ABC, abstractmethod
 
 import numpy as np
+from coreason_identity.models import UserContext
 from sklearn.cluster import KMeans
 
-from coreason_identity.models import UserContext
 from coreason_optimizer.core.interfaces import EmbeddingProvider
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.data.loader import Dataset

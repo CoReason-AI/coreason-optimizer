@@ -13,6 +13,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_optimizer.core.client import OpenAIClient
 from coreason_optimizer.core.config import OptimizerConfig
@@ -21,7 +22,6 @@ from coreason_optimizer.core.metrics import MetricFactory
 from coreason_optimizer.core.models import OptimizedManifest
 from coreason_optimizer.data.loader import Dataset
 from coreason_optimizer.strategies.mipro import MiproOptimizer
-from coreason_identity.models import UserContext
 
 
 class MockAgent:
@@ -83,12 +83,8 @@ def test_readme_library_usage_flow(tmp_path: Path, mock_context: UserContext) ->
         optimizer = MiproOptimizer(client, metric, config)
 
         # 3. Load Data
-        train_set = Dataset.from_csv(
-            train_csv, input_cols=["question"], reference_col="answer", context=mock_context
-        )
-        val_set = Dataset.from_csv(
-            val_csv, input_cols=["question"], reference_col="answer", context=mock_context
-        )
+        train_set = Dataset.from_csv(train_csv, input_cols=["question"], reference_col="answer", context=mock_context)
+        val_set = Dataset.from_csv(val_csv, input_cols=["question"], reference_col="answer", context=mock_context)
 
         # 4. Compile
         agent = MockAgent()

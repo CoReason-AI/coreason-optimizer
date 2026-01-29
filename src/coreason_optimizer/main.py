@@ -19,9 +19,9 @@ import json
 from pathlib import Path
 
 import click
-
 from coreason_identity.models import SecretStr, UserContext
-from coreason_optimizer.core.client import OptimizationClient, OpenAIClient, OpenAIEmbeddingClient
+
+from coreason_optimizer.core.client import OpenAIClient, OpenAIEmbeddingClient, OptimizationClient
 from coreason_optimizer.core.config import OptimizerConfig
 from coreason_optimizer.core.formatter import format_prompt
 from coreason_optimizer.core.interfaces import PromptOptimizer

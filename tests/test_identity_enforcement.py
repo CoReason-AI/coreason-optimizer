@@ -1,11 +1,14 @@
+from pathlib import Path
 
 import pytest
 from coreason_identity.models import UserContext
-from coreason_optimizer.core.client import OptimizationClient
-from coreason_optimizer.strategies.selector import StrategySelector
-from coreason_optimizer.data.loader import Dataset
 
-def test_optimization_client_enforcement():
+from coreason_optimizer.core.client import OptimizationClient
+from coreason_optimizer.data.loader import Dataset
+from coreason_optimizer.strategies.selector import StrategySelector
+
+
+def test_optimization_client_enforcement() -> None:
     client = OptimizationClient()
 
     # Should fail without context
@@ -34,7 +37,8 @@ def test_optimization_client_enforcement():
     # Also test reporting to an existing study to cover that branch
     client.report_metric(study_id, 0.95, context=context)
 
-def test_strategy_selector_enforcement():
+
+def test_strategy_selector_enforcement() -> None:
     selector = StrategySelector()
 
     # Should fail without context
@@ -46,7 +50,8 @@ def test_strategy_selector_enforcement():
     strategy = selector.select_strategy("mipro", context=context)
     assert strategy == "mipro"
 
-def test_dataset_loader_enforcement(tmp_path):
+
+def test_dataset_loader_enforcement(tmp_path: Path) -> None:
     # Create dummy csv
     csv_file = tmp_path / "data.csv"
     csv_file.write_text("input,reference\na,b\n", encoding="utf-8")
@@ -60,7 +65,8 @@ def test_dataset_loader_enforcement(tmp_path):
     ds = Dataset.from_csv(csv_file, input_cols=["input"], reference_col="reference", context=context)
     assert len(ds) == 1
 
-def test_dataset_loader_jsonl_enforcement(tmp_path):
+
+def test_dataset_loader_jsonl_enforcement(tmp_path: Path) -> None:
     jsonl_file = tmp_path / "data.jsonl"
     jsonl_file.write_text('{"input": "a", "output": "b"}\n', encoding="utf-8")
 

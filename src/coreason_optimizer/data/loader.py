@@ -22,6 +22,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from coreason_identity.models import UserContext
+
 from coreason_optimizer.core.models import TrainingExample
 from coreason_optimizer.utils.logger import logger
 
