@@ -20,6 +20,7 @@ pip install coreason-optimizer
 ## Features
 
 -   **Automated Optimization:** Rewrites instructions and selects examples to maximize a score, not human intuition.
+-   **Optimization-as-a-Service:** Run as a microservice API to compile prompts on-demand.
 -   **Model-Specific Compilation:** Generates optimized prompts specifically tuned for target models (e.g., GPT-4, Claude 3.5).
 -   **Continuous Learning:** Re-runs optimization on recent logs to patch prompts against data drift.
 -   **Mutate-Evaluate Loop:** Systematic cycle of drafting, evaluating, diagnosing, mutating, and selecting prompts.
@@ -30,40 +31,44 @@ For full product requirements, see [docs/product_requirements.md](docs/product_r
 
 ## Usage
 
-Here is how to initialize and use the library to compile an agent:
+You can use `coreason-optimizer` as a Python library, a CLI tool, or a Microservice.
+
+### 1. Python Library
 
 ```python
 from coreason_optimizer import OptimizerConfig, PromptOptimizer
 from coreason_optimizer.core.interfaces import Construct
 from coreason_optimizer.data import Dataset
 
-# 1. Configuration
-config = OptimizerConfig(
-    target_model="gpt-4o",
-    metric="exact_match",
-    max_rounds=10
-)
-
-# 2. Load Data
-dataset = Dataset.from_csv("data/gold_set.csv")
-train_set, val_set = dataset.split(test_size=0.2)
-
-# 3. Load Agent (Construct)
-# In a real scenario, this would be imported from your agent code
-# from src.agents.analyst import analyst_agent
+# Define Agent
 class MockAgent(Construct):
     inputs = ["question"]
     outputs = ["answer"]
     system_prompt = "You are a helpful assistant."
 agent = MockAgent()
 
-# 4. Compile
-optimizer = PromptOptimizer(config=config)
-optimized_manifest = optimizer.compile(
-    agent=agent,
-    trainset=train_set,
-    valset=val_set
-)
+# Compile
+dataset = Dataset.from_csv("data/gold_set.csv")
+train_set, val_set = dataset.split(train_ratio=0.8)
 
-print(f"Optimization complete. New Score: {optimized_manifest.performance_metric}")
-print(f"Optimized Instruction: {optimized_manifest.optimized_instruction}")
+optimizer = PromptOptimizer(config=OptimizerConfig(target_model="gpt-4o"))
+manifest = optimizer.compile(agent, train_set, val_set)
+
+print(f"Optimized Score: {manifest.performance_metric}")
+```
+
+### 2. Server Mode (Microservice)
+
+Run the optimizer as a standalone service using Docker:
+
+```bash
+docker run -p 8000:8000 -e OPENAI_API_KEY=$OPENAI_API_KEY coreason-optimizer:latest
+```
+
+Then call the API:
+
+```bash
+curl -X POST http://localhost:8000/optimize -d @request.json
+```
+
+For detailed instructions, see **[docs/usage.md](docs/usage.md)**.
